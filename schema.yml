@@ -1,0 +1,1130 @@
+openapi: 3.0.3
+info:
+  title: MacroTracker API
+  version: 1.0.0
+  description: Nutrition and meal logging API with macro analytics.
+paths:
+  /api/analytics/advanced/:
+    get:
+      operationId: analytics_advanced_retrieve
+      description: |-
+        /api/analytics/advanced/
+        Provides advanced insights:
+          - macro ratio percentages
+          - target achievement
+          - meal type breakdown
+          - weekly/monthly trends
+          - daily trend with 7-day moving average
+      parameters:
+      - in: query
+        name: adherence_tolerance_pct
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          default: '10.00'
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: target_kcal
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          default: '2000.00'
+      tags:
+      - analytics
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvancedAnalyticsResponse'
+          description: ''
+  /api/analytics/trends/:
+    get:
+      operationId: analytics_trends_retrieve
+      description: |-
+        /api/analytics/trends/
+        Optional query params:
+          - end_date=YYYY-MM-DD (default: today)
+          - days=7 (default: 7, allowed 1-31)
+          - target_kcal=2000 (default: 2000)
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+          maximum: 31
+          minimum: 1
+          default: 7
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: target_kcal
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          default: '2000.00'
+      tags:
+      - analytics
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendsResponse'
+          description: ''
+  /api/auth/register/:
+    post:
+      operationId: auth_register_create
+      description: |-
+        /api/auth/register/
+        - POST: Create a user account
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Register'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Register'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Register'
+          description: ''
+  /api/auth/token/:
+    post:
+      operationId: auth_token_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenObtainPair'
+          description: ''
+  /api/auth/token/refresh/:
+    post:
+      operationId: auth_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/foods/:
+    get:
+      operationId: foods_list
+      description: |-
+        /api/foods/
+        - GET: List available food items to retrieve valid food_item IDs.
+        Optional query params:
+          - q: case-insensitive search in name
+          - diet_type: filter by enum value (e.g. vegan/high_protein)
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedFoodItemList'
+          description: ''
+  /api/logs/:
+    get:
+      operationId: logs_list
+      description: |-
+        /api/logs/
+        - POST: Create a meal log entry
+        - GET: List meal logs (optional filter by intake_date via ?date=YYYY-MM-DD)
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - logs
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMealLogList'
+          description: ''
+    post:
+      operationId: logs_create
+      description: |-
+        /api/logs/
+        - POST: Create a meal log entry
+        - GET: List meal logs (optional filter by intake_date via ?date=YYYY-MM-DD)
+      tags:
+      - logs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+  /api/logs/{id}/:
+    get:
+      operationId: logs_retrieve
+      description: |-
+        /api/logs/{id}/
+        - PUT/PATCH: Update meal log
+        - DELETE: Remove meal log
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - logs
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+    put:
+      operationId: logs_update
+      description: |-
+        /api/logs/{id}/
+        - PUT/PATCH: Update meal log
+        - DELETE: Remove meal log
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - logs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+    patch:
+      operationId: logs_partial_update
+      description: |-
+        /api/logs/{id}/
+        - PUT/PATCH: Update meal log
+        - DELETE: Remove meal log
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - logs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMealLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMealLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMealLog'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+    delete:
+      operationId: logs_destroy
+      description: |-
+        /api/logs/{id}/
+        - PUT/PATCH: Update meal log
+        - DELETE: Remove meal log
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - logs
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/logs/daily-summary/:
+    get:
+      operationId: logs_daily_summary_retrieve
+      description: |-
+        /api/logs/daily-summary/?date=YYYY-MM-DD
+        Return total kcal/protein/carbs/fat for the given date.
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - logs
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySummaryResponse'
+          description: ''
+components:
+  schemas:
+    AdvancedAnalyticsResponse:
+      type: object
+      properties:
+        period:
+          $ref: '#/components/schemas/TrendsPeriod'
+        totals:
+          $ref: '#/components/schemas/AdvancedTotals'
+        macro_ratio_percent:
+          $ref: '#/components/schemas/MacroRatioPercent'
+        target_achievement:
+          $ref: '#/components/schemas/TargetAchievement'
+        meal_type_breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealTypeBreakdown'
+        weekly_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyTrend'
+        monthly_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/MonthlyTrend'
+        daily_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdvancedDailyTrend'
+      required:
+      - daily_trend
+      - macro_ratio_percent
+      - meal_type_breakdown
+      - monthly_trend
+      - period
+      - target_achievement
+      - totals
+      - weekly_trend
+    AdvancedDailyTrend:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        log_count:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        kcal_7day_moving_avg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - date
+      - kcal_7day_moving_avg
+      - log_count
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+    AdvancedTotals:
+      type: object
+      properties:
+        kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        avg_daily_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - avg_daily_kcal
+      - carbs
+      - fat
+      - kcal
+      - protein
+    DailySummaryResponse:
+      type: object
+      description: Response serializer for daily summary endpoint.
+      properties:
+        date:
+          type: string
+          format: date
+        log_count:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - date
+      - log_count
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+    DeficitInterpretationEnum:
+      enum:
+      - average_deficit
+      - average_surplus
+      - on_target
+      type: string
+      description: |-
+        * `average_deficit` - average_deficit
+        * `average_surplus` - average_surplus
+        * `on_target` - on_target
+    DietTypeEnum:
+      enum:
+      - high_protein
+      - keto
+      - vegan
+      - vegetarian
+      - omnivore
+      - other
+      type: string
+      description: |-
+        * `high_protein` - High Protein
+        * `keto` - Keto
+        * `vegan` - Vegan
+        * `vegetarian` - Vegetarian
+        * `omnivore` - Omnivore
+        * `other` - Other
+    FoodItem:
+      type: object
+      description: Read-only serializer for food catalog lookup.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        diet_type:
+          $ref: '#/components/schemas/DietTypeEnum'
+        per_100g_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+          description: Calories per 100g
+        per_100g_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+          description: Protein grams per 100g
+        per_100g_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+          description: Carbohydrate grams per 100g
+        per_100g_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+          description: Fat grams per 100g
+        source:
+          type: string
+          description: Dataset/source name such as USDA/FSA
+          maxLength: 128
+      required:
+      - id
+      - name
+      - per_100g_carbs
+      - per_100g_fat
+      - per_100g_kcal
+      - per_100g_protein
+    MacroRatioPercent:
+      type: object
+      properties:
+        protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+      required:
+      - carbs
+      - fat
+      - protein
+    MealLog:
+      type: object
+      description: Serializer for creating/updating and reading meal logs.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          type: integer
+          readOnly: true
+        intake_date:
+          type: string
+          format: date
+        meal_type:
+          $ref: '#/components/schemas/MealTypeEnum'
+        food_item:
+          type: integer
+        food_item_name:
+          type: string
+          readOnly: true
+        intake_weight_grams:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        actual_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actual_carbs
+      - actual_fat
+      - actual_kcal
+      - actual_protein
+      - created_at
+      - food_item
+      - food_item_name
+      - id
+      - intake_date
+      - intake_weight_grams
+      - meal_type
+      - updated_at
+      - user
+    MealTypeBreakdown:
+      type: object
+      properties:
+        meal_type:
+          type: string
+        log_count:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        kcal_share_percent:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+      required:
+      - kcal_share_percent
+      - log_count
+      - meal_type
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+    MealTypeEnum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      type: string
+      description: |-
+        * `breakfast` - Breakfast
+        * `lunch` - Lunch
+        * `dinner` - Dinner
+        * `snack` - Snack
+    MonthlyTrend:
+      type: object
+      properties:
+        month:
+          type: string
+        logged_days:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        avg_daily_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - avg_daily_kcal
+      - logged_days
+      - month
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+    PaginatedFoodItemList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodItem'
+    PaginatedMealLogList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealLog'
+    PatchedMealLog:
+      type: object
+      description: Serializer for creating/updating and reading meal logs.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          type: integer
+          readOnly: true
+        intake_date:
+          type: string
+          format: date
+        meal_type:
+          $ref: '#/components/schemas/MealTypeEnum'
+        food_item:
+          type: integer
+        food_item_name:
+          type: string
+          readOnly: true
+        intake_weight_grams:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        actual_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        actual_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    Register:
+      type: object
+      description: Serializer for account creation.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - id
+      - password
+      - password_confirm
+      - username
+    TargetAchievement:
+      type: object
+      properties:
+        target_kcal_per_day:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        adherence_tolerance_pct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        logged_days:
+          type: integer
+        days_met_target:
+          type: integer
+        adherence_rate_percent:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        average_kcal_gap:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - adherence_rate_percent
+      - adherence_tolerance_pct
+      - average_kcal_gap
+      - days_met_target
+      - logged_days
+      - target_kcal_per_day
+    TokenObtainPair:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - password
+      - refresh
+      - username
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          writeOnly: true
+      required:
+      - access
+      - refresh
+    TrendsAverage:
+      type: object
+      properties:
+        kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        kcal_deficit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        deficit_interpretation:
+          $ref: '#/components/schemas/DeficitInterpretationEnum'
+      required:
+      - carbs
+      - deficit_interpretation
+      - fat
+      - kcal
+      - kcal_deficit
+      - protein
+    TrendsDailyEntry:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        log_count:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        kcal_deficit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - date
+      - kcal_deficit
+      - log_count
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+    TrendsPeriod:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        days:
+          type: integer
+        days_with_logs:
+          type: integer
+      required:
+      - days
+      - days_with_logs
+      - end_date
+      - start_date
+    TrendsResponse:
+      type: object
+      properties:
+        period:
+          $ref: '#/components/schemas/TrendsPeriod'
+        target_kcal_per_day:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        daily:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendsDailyEntry'
+        average:
+          $ref: '#/components/schemas/TrendsAverage'
+      required:
+      - average
+      - daily
+      - period
+      - target_kcal_per_day
+    WeeklyTrend:
+      type: object
+      properties:
+        week_start:
+          type: string
+          format: date
+        logged_days:
+          type: integer
+        total_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        avg_daily_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        total_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - avg_daily_kcal
+      - logged_days
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+      - week_start
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

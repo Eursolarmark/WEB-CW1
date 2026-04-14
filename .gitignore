@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Django
+*.sqlite3
+/staticfiles/
+/media/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local artifacts / temp notes
+_brief_*.txt
+_coursework_brief_extracted.txt
+
+# Test/coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+_history_backup/
