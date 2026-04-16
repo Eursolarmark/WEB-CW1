@@ -48,6 +48,90 @@ class MealLogListQuerySerializer(serializers.Serializer):
     """Query serializer for listing meal logs."""
 
     date = serializers.DateField(required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    meal_type = serializers.ChoiceField(
+        required=False,
+        choices=[choice for choice, _ in MealLog.MealType.choices],
+    )
+    meal_types = serializers.CharField(required=False, allow_blank=False, max_length=128)
+    kcal_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    kcal_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    protein_min = serializers.DecimalField(
+        required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2
+    )
+    protein_max = serializers.DecimalField(
+        required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2
+    )
+    carbs_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    carbs_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    fat_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    fat_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    ordering = serializers.ChoiceField(
+        required=False,
+        choices=[
+            "intake_date",
+            "-intake_date",
+            "created_at",
+            "-created_at",
+            "actual_kcal",
+            "-actual_kcal",
+            "actual_protein",
+            "-actual_protein",
+            "actual_carbs",
+            "-actual_carbs",
+            "actual_fat",
+            "-actual_fat",
+        ],
+        default="-intake_date",
+    )
+
+    @staticmethod
+    def _validate_min_max(attrs: dict, min_key: str, max_key: str, label: str) -> None:
+        min_value = attrs.get(min_key)
+        max_value = attrs.get(max_key)
+        if min_value is not None and max_value is not None and min_value > max_value:
+            raise serializers.ValidationError({min_key: f"{label} min must be <= {label} max."})
+
+    def validate(self, attrs):
+        date_value = attrs.get("date")
+        start_date = attrs.get("start_date")
+        end_date = attrs.get("end_date")
+
+        if date_value:
+            if start_date and start_date != date_value:
+                raise serializers.ValidationError(
+                    {"start_date": "start_date must match date when date is provided."}
+                )
+            if end_date and end_date != date_value:
+                raise serializers.ValidationError(
+                    {"end_date": "end_date must match date when date is provided."}
+                )
+            attrs["start_date"] = date_value
+            attrs["end_date"] = date_value
+
+        if attrs.get("start_date") and attrs.get("end_date") and attrs["start_date"] > attrs["end_date"]:
+            raise serializers.ValidationError(
+                {"start_date": "start_date must be earlier than or equal to end_date."}
+            )
+
+        self._validate_min_max(attrs, "kcal_min", "kcal_max", "kcal")
+        self._validate_min_max(attrs, "protein_min", "protein_max", "protein")
+        self._validate_min_max(attrs, "carbs_min", "carbs_max", "carbs")
+        self._validate_min_max(attrs, "fat_min", "fat_max", "fat")
+
+        meal_types_csv = attrs.get("meal_types")
+        if meal_types_csv:
+            allowed = {choice for choice, _ in MealLog.MealType.choices}
+            parsed_types = [item.strip() for item in meal_types_csv.split(",") if item.strip()]
+            invalid = [item for item in parsed_types if item not in allowed]
+            if invalid:
+                raise serializers.ValidationError(
+                    {"meal_types": f"Invalid meal_type values: {', '.join(invalid)}"}
+                )
+            attrs["meal_types_list"] = parsed_types
+
+        return attrs
 
 
 class FoodItemSerializer(serializers.ModelSerializer):
@@ -75,6 +159,48 @@ class FoodItemListQuerySerializer(serializers.Serializer):
         required=False,
         choices=[choice for choice, _ in FoodItem.DietType.choices],
     )
+    kcal_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    kcal_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    protein_min = serializers.DecimalField(
+        required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2
+    )
+    protein_max = serializers.DecimalField(
+        required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2
+    )
+    carbs_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    carbs_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    fat_min = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    fat_max = serializers.DecimalField(required=False, min_value=Decimal("0"), max_digits=10, decimal_places=2)
+    ordering = serializers.ChoiceField(
+        required=False,
+        choices=[
+            "name",
+            "-name",
+            "per_100g_kcal",
+            "-per_100g_kcal",
+            "per_100g_protein",
+            "-per_100g_protein",
+            "per_100g_carbs",
+            "-per_100g_carbs",
+            "per_100g_fat",
+            "-per_100g_fat",
+        ],
+        default="name",
+    )
+
+    @staticmethod
+    def _validate_min_max(attrs: dict, min_key: str, max_key: str, label: str) -> None:
+        min_value = attrs.get(min_key)
+        max_value = attrs.get(max_key)
+        if min_value is not None and max_value is not None and min_value > max_value:
+            raise serializers.ValidationError({min_key: f"{label} min must be <= {label} max."})
+
+    def validate(self, attrs):
+        self._validate_min_max(attrs, "kcal_min", "kcal_max", "kcal")
+        self._validate_min_max(attrs, "protein_min", "protein_max", "protein")
+        self._validate_min_max(attrs, "carbs_min", "carbs_max", "carbs")
+        self._validate_min_max(attrs, "fat_min", "fat_max", "fat")
+        return attrs
 
 
 class RegisterSerializer(serializers.ModelSerializer):

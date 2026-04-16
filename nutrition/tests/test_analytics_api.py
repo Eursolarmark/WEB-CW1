@@ -48,7 +48,8 @@ class AnalyticsAPITests(APITestCase):
         response = self.client.get(reverse("meal-log-daily-summary"))
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("date", response.data)
+        self.assertEqual(response.data["code"], "validation_error")
+        self.assertIn("date", response.data["details"])
 
     def test_daily_summary_returns_correct_aggregate(self):
         self.client.force_authenticate(self.user)

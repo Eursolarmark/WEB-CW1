@@ -34,7 +34,8 @@ class AuthAPITests(APITestCase):
         response = self.client.post(reverse("auth-register"), payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("password_confirm", response.data)
+        self.assertEqual(response.data["code"], "validation_error")
+        self.assertIn("password_confirm", response.data["details"])
 
     def test_obtain_and_refresh_token(self):
         User.objects.create_user(

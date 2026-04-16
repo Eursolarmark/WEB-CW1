@@ -74,4 +74,5 @@ class FoodItemAPITests(APITestCase):
         response = self.client.get(reverse("food-item-list"), {"diet_type": "carnivore"})
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("diet_type", response.data)
+        self.assertEqual(response.data["code"], "validation_error")
+        self.assertIn("diet_type", response.data["details"])
