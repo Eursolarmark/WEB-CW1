@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-MacroTracker API provides nutrition and meal tracking services with per-user data isolation.
-All business endpoints are authenticated (JWT bearer token recommended).
+MacroTracker API is a per-user nutrition tracking backend.
+It supports authentication, food lookup, meal logging, personalization, and analytics.
 
 Base URL (local):
 
@@ -11,13 +11,13 @@ Base URL (local):
 http://127.0.0.1:8000
 ```
 
-Content type:
+Primary content type:
 
 ```text
 application/json
 ```
 
-## 2. Authentication
+## 2. Authentication and Global Headers
 
 Protected endpoints require:
 
@@ -25,18 +25,123 @@ Protected endpoints require:
 Authorization: Bearer <access_token>
 ```
 
-Note:
+JWT policy:
 
-- JWT is the primary authentication mechanism.
-- Session authentication is also enabled for browser-based API exploration.
+- `access` lifetime: 15 minutes
+- `refresh` lifetime: 7 days
+- refresh rotation: enabled
+- blacklist after rotation/logout: enabled
 
-### 2.1 Register
+Global response headers:
 
-- Method: `POST`
-- URL: `/api/auth/register/`
-- Auth required: No
+- `X-Request-ID`: request trace ID (generated or echoed)
+- `X-Cache`: only on cached GET endpoints (`HIT` or `MISS`)
+- `X-Idempotent-Replay`: present with `true` when a write response is replayed from idempotency cache
 
-Request body:
+## 3. Cross-Cutting Behavior
+
+### 3.1 Idempotency for Write Endpoints
+
+You can send:
+
+```text
+Idempotency-Key: <client-generated-unique-key>
+```
+
+Supported endpoints:
+
+- `POST /api/foods/favorites/`
+- `POST /api/custom-foods/`
+- `POST /api/recipes/`
+- `POST /api/logs/`
+- `POST /api/logs/quick/`
+- `POST /api/logs/bulk/`
+
+Behavior:
+
+- Duplicate request with same key/user/method/path returns cached response.
+- Replay response includes `X-Idempotent-Replay: true`.
+- Idempotency cache TTL is 1 hour.
+
+### 3.2 Caching
+
+Cached endpoints:
+
+- `GET /api/foods/` (TTL 120s)
+- `GET /api/logs/daily-summary/` (TTL 180s)
+- `GET /api/analytics/trends/` (TTL 180s)
+- `GET /api/analytics/advanced/` (TTL 180s)
+
+Meal-log writes bump user analytics cache version, so analytics cache is invalidated after create/update/delete.
+
+### 3.3 Throttling
+
+Configured rates:
+
+- `anon`: `100/hour`
+- `user_burst`: `300/minute`
+- `auth`: `30/minute`
+- `food_lookup`: `240/minute`
+- `meal_write`: `60/minute`
+- `analytics`: `90/minute`
+
+### 3.4 Unified Error Envelope
+
+Handled errors return this shape:
+
+```json
+{
+  "code": "validation_error|authentication_failed|permission_denied|resource_not_found|method_not_allowed|rate_limited|internal_error",
+  "message": "Human-readable summary",
+  "details": {
+    "field_or_detail": ["specific details"]
+  },
+  "request_id": "<trace_id>",
+  "timestamp": "ISO-8601 datetime"
+}
+```
+
+## 4. Core Data Rules
+
+### 4.1 Food Source Rule
+
+For `MealLog` and `RecipeItem`, exactly one source must be provided:
+
+- `food_item` **or** `custom_food`
+
+Providing both or neither is invalid.
+
+### 4.2 Weight Input Rule
+
+Meal log create endpoints support either:
+
+- direct grams: `intake_weight_grams`
+- unit conversion: `unit` + `unit_quantity`
+
+Supported units and conversion:
+
+- `g`, `gram`, `grams` -> 1g
+- `piece` -> 50g
+- `cup` -> 240g
+- `tbsp` -> 15g
+
+## 5. Endpoint Reference
+
+Pagination for list endpoints (when applicable):
+
+- default `page_size`: 20
+- max `page_size`: 100
+- query params: `page`, `page_size`
+
+---
+
+## 5.1 Auth Endpoints
+
+### POST `/api/auth/register/`
+
+Create account.
+
+Request:
 
 ```json
 {
@@ -47,7 +152,7 @@ Request body:
 }
 ```
 
-Success response (`201 Created`):
+Success: `201 Created`
 
 ```json
 {
@@ -57,23 +162,20 @@ Success response (`201 Created`):
 }
 ```
 
-### 2.2 Obtain JWT Token Pair
+### POST `/api/auth/token/`
 
-- Method: `POST`
-- URL: `/api/auth/token/`
-- Auth required: No
-- Login identifier: send either `username` or `email` in the `username` field
+Obtain JWT pair. `username` field accepts username **or** email.
 
-Request body:
+Request:
 
 ```json
 {
-  "username": "alice",
+  "username": "alice@example.com",
   "password": "StrongPass123!"
 }
 ```
 
-Success response (`200 OK`):
+Success: `200 OK`
 
 ```json
 {
@@ -82,13 +184,9 @@ Success response (`200 OK`):
 }
 ```
 
-### 2.3 Refresh Access Token
+### POST `/api/auth/token/refresh/`
 
-- Method: `POST`
-- URL: `/api/auth/token/refresh/`
-- Auth required: No
-
-Request body:
+Request:
 
 ```json
 {
@@ -96,13 +194,19 @@ Request body:
 }
 ```
 
-### 2.4 Current User Profile
+Success: `200 OK`
 
-- Method: `GET`
-- URL: `/api/auth/me/`
-- Auth required: Yes
+```json
+{
+  "access": "<new_access_token>"
+}
+```
 
-Success response (`200 OK`):
+### GET `/api/auth/me/`
+
+Return current authenticated user.
+
+Success: `200 OK`
 
 ```json
 {
@@ -112,14 +216,11 @@ Success response (`200 OK`):
 }
 ```
 
-### 2.5 Logout (Blacklist Refresh Token)
+### POST `/api/auth/logout/`
 
-- Method: `POST`
-- URL: `/api/auth/logout/`
-- Auth required: Yes
-- Description: Blacklists provided refresh token so it cannot be used again.
+Blacklist refresh token.
 
-Request body:
+Request:
 
 ```json
 {
@@ -127,98 +228,147 @@ Request body:
 }
 ```
 
-Success response: `205 Reset Content` (empty body)
+Success: `205 Reset Content`
 
-### 2.6 JWT Session Policy
+### POST `/api/auth/password/change/`
 
-- `access` token lifetime: `15 minutes`
-- `refresh` token lifetime: `7 days`
-- refresh token rotation: enabled
-- blacklisting after rotation/logout: enabled
-
-Success response (`200 OK`):
+Request:
 
 ```json
 {
-  "access": "<new_access_token>"
+  "old_password": "StrongPass123!",
+  "new_password": "NewStrongPass123!",
+  "new_password_confirm": "NewStrongPass123!"
 }
 ```
 
-## 3. Data Models
+Success: `200 OK`
 
-### 3.1 FoodItem
+### POST `/api/auth/password/reset/request/`
 
-- `id` (int)
-- `name` (string, unique)
-- `diet_type` (enum): `high_protein`, `keto`, `vegan`, `vegetarian`, `omnivore`, `other`
-- `per_100g_kcal` (decimal)
-- `per_100g_protein` (decimal)
-- `per_100g_carbs` (decimal)
-- `per_100g_fat` (decimal)
-- `source` (string)
+Request:
 
-### 3.2 MealLog
-
-- `id` (int)
-- `user` (int, owner user ID)
-- `intake_date` (date)
-- `meal_type` (enum): `breakfast`, `lunch`, `dinner`, `snack`
-- `food_item` (int, FK to FoodItem)
-- `intake_weight_grams` (decimal, `> 0`)
-- `actual_kcal` (decimal, auto-calculated)
-- `actual_protein` (decimal, auto-calculated)
-- `actual_carbs` (decimal, auto-calculated)
-- `actual_fat` (decimal, auto-calculated)
-- `created_at` (datetime)
-- `updated_at` (datetime)
-
-Auto-calculation formula:
-
-```text
-actual_metric = (intake_weight_grams / 100) * per_100g_metric
+```json
+{
+  "email": "alice@example.com"
+}
 ```
 
-## 4. Endpoints
+Success: `200 OK`
 
-List endpoints use DRF page-number pagination:
+```json
+{
+  "message": "If the email exists, reset instructions are prepared."
+}
+```
 
-- Default `page_size`: `20`
-- Max `page_size`: `100`
-- Common query params: `page`, `page_size`
+In `DEBUG=true`, response also includes `uid` and `token` for coursework/development testing.
 
-## 4.1 Food Catalog
+### POST `/api/auth/password/reset/confirm/`
 
-### GET /api/foods/
+Request:
 
-- Auth required: Yes
-- Description: List food items (for `food_item` ID lookup)
+```json
+{
+  "uid": "<uid>",
+  "token": "<reset_token>",
+  "new_password": "AnotherStrongPass123!",
+  "new_password_confirm": "AnotherStrongPass123!"
+}
+```
+
+Success: `200 OK`
+
+### GET `/api/auth/sessions/`
+
+List active (non-blacklisted) refresh-token sessions.
+
+Success: `200 OK`
+
+```json
+{
+  "sessions": [
+    {
+      "jti": "<token-jti>",
+      "created_at": "2026-04-17T10:30:00Z",
+      "expires_at": "2026-04-24T10:30:00Z"
+    }
+  ]
+}
+```
+
+### POST `/api/auth/sessions/revoke-all/`
+
+Blacklist all outstanding refresh tokens for current user.
+
+Success: `200 OK`
+
+```json
+{
+  "revoked_sessions": 3
+}
+```
+
+### DELETE `/api/auth/account/`
+
+Delete current user account.
+
+Request:
+
+```json
+{
+  "password": "StrongPass123!"
+}
+```
+
+Success: `204 No Content`
+
+### GET `/api/auth/export/`
+
+Export key user data.
+
+Success: `200 OK`
+
+```json
+{
+  "user": {"id": 1, "username": "alice", "email": "alice@example.com"},
+  "nutrition_target": {
+    "target_kcal": "2000.00",
+    "target_protein": "120.00",
+    "target_carbs": "220.00",
+    "target_fat": "67.00",
+    "updated_at": "2026-04-17T11:00:00Z"
+  },
+  "favorites": [],
+  "custom_food_items": [],
+  "meal_logs": []
+}
+```
+
+---
+
+## 5.2 Food Catalog, Recent, Favorites
+
+### GET `/api/foods/`
+
+List food catalog items.
 
 Query params:
 
-- `q` (optional): fuzzy search by food name
-- `diet_type` (optional): filter by enum value
-- `kcal_min`, `kcal_max` (optional): filter by kcal per 100g range
-- `protein_min`, `protein_max` (optional): filter by protein per 100g range
-- `carbs_min`, `carbs_max` (optional): filter by carbs per 100g range
-- `fat_min`, `fat_max` (optional): filter by fat per 100g range
-- `ordering` (optional): one of `name`, `-name`, `per_100g_kcal`, `-per_100g_kcal`,
-  `per_100g_protein`, `-per_100g_protein`, `per_100g_carbs`, `-per_100g_carbs`,
-  `per_100g_fat`, `-per_100g_fat`
-- `page` (optional): page number, starts from `1`
-- `page_size` (optional): `1..100`
+- `q`
+- `diet_type` in `high_protein|keto|vegan|vegetarian|omnivore|other`
+- `kcal_min`, `kcal_max`
+- `protein_min`, `protein_max`
+- `carbs_min`, `carbs_max`
+- `fat_min`, `fat_max`
+- `ordering` in `name|-name|per_100g_kcal|-per_100g_kcal|per_100g_protein|-per_100g_protein|per_100g_carbs|-per_100g_carbs|per_100g_fat|-per_100g_fat`
 
-Example:
-
-```text
-GET /api/foods/?diet_type=vegan&protein_min=5&kcal_max=400&ordering=-per_100g_protein
-```
-
-Success response (`200 OK`):
+Success: `200 OK`
 
 ```json
 {
   "count": 295,
-  "next": "http://127.0.0.1:8000/api/foods/?page=2",
+  "next": null,
   "previous": null,
   "results": [
     {
@@ -235,160 +385,295 @@ Success response (`200 OK`):
 }
 ```
 
-## 4.2 Meal Logs
+### GET `/api/foods/recent/`
 
-### GET /api/logs/
-
-- Auth required: Yes
-- Description: List current user's meal logs
+List foods recently logged by current user.
 
 Query params:
 
-- `date` (optional): `YYYY-MM-DD`
-- `start_date`, `end_date` (optional): date range filter
-- `meal_type` (optional): single value in `breakfast|lunch|dinner|snack`
-- `meal_types` (optional): CSV multi-filter, e.g. `breakfast,dinner`
-- `kcal_min`, `kcal_max` (optional): actual kcal range filter
-- `protein_min`, `protein_max` (optional): actual protein range filter
-- `carbs_min`, `carbs_max` (optional): actual carbs range filter
-- `fat_min`, `fat_max` (optional): actual fat range filter
-- `ordering` (optional): one of `intake_date`, `-intake_date`, `created_at`, `-created_at`,
-  `actual_kcal`, `-actual_kcal`, `actual_protein`, `-actual_protein`, `actual_carbs`,
-  `-actual_carbs`, `actual_fat`, `-actual_fat`
-- `page` (optional): page number, starts from `1`
-- `page_size` (optional): `1..100`
+- `limit` (optional, default 20, range 1..100)
 
-Success response (`200 OK`, shortened):
+Success: `200 OK`
+
+```json
+[
+  {
+    "food_item": 298,
+    "food_item_name": "Hummus, Commercial",
+    "last_used_at": "2026-04-17T10:00:00Z",
+    "use_count": 4
+  }
+]
+```
+
+### GET `/api/foods/favorites/`
+
+List favorites.
+
+Success: `200 OK`
+
+```json
+[
+  {
+    "id": 2,
+    "food_item": 298,
+    "food_item_name": "Hummus, Commercial",
+    "created_at": "2026-04-17T10:10:00Z"
+  }
+]
+```
+
+### POST `/api/foods/favorites/`
+
+Create favorite.
+
+Request:
 
 ```json
 {
-  "count": 8,
-  "next": null,
-  "previous": null,
-  "results": [
-    {
-      "id": 9,
-      "user": 1,
-      "intake_date": "2026-04-13",
-      "meal_type": "lunch",
-      "food_item": 298,
-      "food_item_name": "Hummus, Commercial",
-      "intake_weight_grams": "150.00",
-      "actual_kcal": "249.90",
-      "actual_protein": "11.94",
-      "actual_carbs": "20.61",
-      "actual_fat": "14.58",
-      "created_at": "2026-04-14T10:30:00Z",
-      "updated_at": "2026-04-14T10:30:00Z"
-    }
+  "food_item": 298
+}
+```
+
+Success: `201 Created`
+
+### DELETE `/api/foods/favorites/{food_item_id}/`
+
+Delete favorite by `food_item_id`.
+
+- success: `204 No Content`
+- not found: `404 Not Found`
+
+---
+
+## 5.3 Custom Foods
+
+### GET `/api/custom-foods/`
+
+List current user custom foods.
+
+### POST `/api/custom-foods/`
+
+Create custom food.
+
+Request:
+
+```json
+{
+  "name": "My Oat Bowl",
+  "per_100g_kcal": "150.00",
+  "per_100g_protein": "6.00",
+  "per_100g_carbs": "24.00",
+  "per_100g_fat": "3.00"
+}
+```
+
+Success: `201 Created`
+
+### GET `/api/custom-foods/{id}/`
+
+Retrieve one custom food (owner only).
+
+### PUT/PATCH `/api/custom-foods/{id}/`
+
+Update custom food (owner only).
+
+### DELETE `/api/custom-foods/{id}/`
+
+Delete custom food (owner only).
+
+---
+
+## 5.4 Recipes
+
+### GET `/api/recipes/`
+
+List current user recipe templates.
+
+### POST `/api/recipes/`
+
+Create recipe.
+
+Request:
+
+```json
+{
+  "name": "Breakfast Bowl",
+  "description": "Demo recipe",
+  "items": [
+    {"food_item": 298, "weight_grams": "100.00"},
+    {"custom_food": 5, "weight_grams": "150.00"}
   ]
 }
 ```
 
-Validation error example (`400 Bad Request`):
+Success: `201 Created`
 
 ```json
 {
-  "code": "validation_error",
-  "message": "Request validation failed.",
-  "details": {
-    "date": ["Date has wrong format. Use one of these formats instead: YYYY-MM-DD."]
-  },
-  "request_id": "7c3376f11abf4697b5d9d2d0e8f35eaa",
-  "timestamp": "2026-04-17T10:12:33.215942+08:00"
+  "id": 1,
+  "name": "Breakfast Bowl",
+  "description": "Demo recipe",
+  "items": [
+    {
+      "id": 1,
+      "food_item": 298,
+      "food_item_name": "Hummus, Commercial",
+      "custom_food": null,
+      "custom_food_name": null,
+      "weight_grams": "100.00"
+    },
+    {
+      "id": 2,
+      "food_item": null,
+      "food_item_name": null,
+      "custom_food": 5,
+      "custom_food_name": "Custom Yogurt",
+      "weight_grams": "150.00"
+    }
+  ],
+  "total_kcal": "239.00",
+  "total_protein": "25.00",
+  "total_carbs": "34.80",
+  "total_fat": "3.60",
+  "created_at": "2026-04-17T11:00:00Z",
+  "updated_at": "2026-04-17T11:00:00Z"
 }
 ```
 
-### POST /api/logs/
+### GET `/api/recipes/{id}/`
 
-- Auth required: Yes
-- Description: Create a meal log for current user
+Retrieve one recipe (owner only).
 
-Request body:
+### PUT/PATCH `/api/recipes/{id}/`
+
+Update recipe (owner only). If `items` is included, existing items are replaced.
+
+### DELETE `/api/recipes/{id}/`
+
+Delete recipe (owner only).
+
+---
+
+## 5.5 Meal Logs
+
+### GET `/api/logs/`
+
+List current user logs.
+
+Query params:
+
+- date range: `date` or `start_date` + `end_date`
+- meal filter: `meal_type` or CSV `meal_types` (e.g. `breakfast,dinner`)
+- nutrient range: `kcal_min|max`, `protein_min|max`, `carbs_min|max`, `fat_min|max`
+- ordering: `intake_date|-intake_date|created_at|-created_at|actual_kcal|-actual_kcal|actual_protein|-actual_protein|actual_carbs|-actual_carbs|actual_fat|-actual_fat`
+
+### POST `/api/logs/`
+
+Create one log.
+
+Request (grams mode):
 
 ```json
 {
-  "intake_date": "2026-04-13",
+  "intake_date": "2026-04-17",
   "meal_type": "lunch",
   "food_item": 298,
   "intake_weight_grams": "150.00"
 }
 ```
 
-Success response (`201 Created`):
+Request (unit mode):
 
 ```json
 {
-  "id": 9,
-  "user": 1,
-  "intake_date": "2026-04-13",
-  "meal_type": "lunch",
+  "intake_date": "2026-04-17",
+  "meal_type": "snack",
   "food_item": 298,
-  "food_item_name": "Hummus, Commercial",
-  "intake_weight_grams": "150.00",
-  "actual_kcal": "249.90",
-  "actual_protein": "11.94",
-  "actual_carbs": "20.61",
-  "actual_fat": "14.58",
-  "created_at": "2026-04-14T10:30:00Z",
-  "updated_at": "2026-04-14T10:30:00Z"
+  "unit": "piece",
+  "unit_quantity": "2.00"
 }
 ```
 
-Common error (`400 Bad Request`):
+`food_item` can be replaced with `custom_food`.
+
+### POST `/api/logs/quick/`
+
+Quick create by `food_name` (matches exact name in `FoodItem`, then user `CustomFoodItem`).
+
+Request:
 
 ```json
 {
-  "food_item": ["Invalid pk \"999999\" - object does not exist."]
+  "food_name": "banana",
+  "intake_date": "2026-04-17",
+  "meal_type": "snack",
+  "unit": "piece",
+  "unit_quantity": "1.00"
 }
 ```
 
-### GET /api/logs/{id}/
+On no exact match: `400 Bad Request` with candidate suggestions.
 
-- Auth required: Yes
-- Description: Retrieve one meal log (owner only)
-- Success: `200 OK`
-- Not found / not owner: `404 Not Found`
+### POST `/api/logs/bulk/`
 
-### PUT /api/logs/{id}/
+Bulk create logs (`items` length 1..100).
 
-- Auth required: Yes
-- Description: Full update (owner only)
-- Success: `200 OK`
-- Invalid input: `400 Bad Request`
-- Not found / not owner: `404 Not Found`
-
-### PATCH /api/logs/{id}/
-
-- Auth required: Yes
-- Description: Partial update (owner only)
-- Success: `200 OK`
-- Invalid input: `400 Bad Request`
-- Not found / not owner: `404 Not Found`
-
-### DELETE /api/logs/{id}/
-
-- Auth required: Yes
-- Description: Delete meal log (owner only)
-- Success: `204 No Content`
-- Not found / not owner: `404 Not Found`
-
-## 4.3 Analytics
-
-### GET /api/logs/daily-summary/
-
-- Auth required: Yes
-- Description: Daily nutrient summary for current user
-
-Query params:
-
-- `date` (required): `YYYY-MM-DD`
-
-Success response (`200 OK`):
+Request:
 
 ```json
 {
-  "date": "2026-04-13",
+  "items": [
+    {
+      "intake_date": "2026-04-17",
+      "meal_type": "breakfast",
+      "food_item": 298,
+      "intake_weight_grams": "100.00"
+    },
+    {
+      "intake_date": "2026-04-17",
+      "meal_type": "lunch",
+      "custom_food": 5,
+      "unit": "cup",
+      "unit_quantity": "0.50"
+    }
+  ]
+}
+```
+
+Success: `201 Created`
+
+```json
+{
+  "created": 2,
+  "results": [
+    {"id": 11, "meal_type": "breakfast", "actual_kcal": "120.00"},
+    {"id": 12, "meal_type": "lunch", "actual_kcal": "180.00"}
+  ]
+}
+```
+
+### GET `/api/logs/{id}/`
+
+Retrieve single log (owner only).
+
+### PUT/PATCH `/api/logs/{id}/`
+
+Update log (owner only).
+
+### DELETE `/api/logs/{id}/`
+
+Delete log (owner only), returns `204 No Content`.
+
+### GET `/api/logs/daily-summary/?date=YYYY-MM-DD`
+
+Return totals for one day.
+
+Success: `200 OK`
+
+```json
+{
+  "date": "2026-04-17",
   "log_count": 2,
   "total_kcal": "460.00",
   "total_protein": "64.40",
@@ -397,77 +682,117 @@ Success response (`200 OK`):
 }
 ```
 
-Validation error (`400 Bad Request`):
+---
+
+## 5.6 Profile Targets
+
+### GET `/api/profile/targets/`
+
+Get current user nutrition target.
+
+### PUT `/api/profile/targets/`
+
+Update target.
+
+Request:
 
 ```json
 {
-  "code": "validation_error",
-  "message": "Request validation failed.",
-  "details": {
-    "date": ["This field is required."]
-  },
-  "request_id": "f934d8e2a0fa4dc5961f1de4f9521db5",
-  "timestamp": "2026-04-17T10:13:22.551998+08:00"
+  "target_kcal": "2100.00",
+  "target_protein": "140.00",
+  "target_carbs": "220.00",
+  "target_fat": "70.00"
 }
 ```
 
-### GET /api/analytics/trends/
+Success: `200 OK`
 
-- Auth required: Yes
-- Description: N-day trend (default 7 days) with calorie deficit/surplus
+```json
+{
+  "target_kcal": "2100.00",
+  "target_protein": "140.00",
+  "target_carbs": "220.00",
+  "target_fat": "70.00",
+  "updated_at": "2026-04-17T11:22:00Z"
+}
+```
+
+---
+
+## 5.7 Analytics
+
+### GET `/api/analytics/trends/`
+
+N-day trend summary.
 
 Query params:
 
-- `end_date` (optional): `YYYY-MM-DD`, default today
-- `days` (optional): `1..31`, default `7`
-- `target_kcal` (optional): default `2000`
+- `end_date` (optional, default today)
+- `days` (optional, default 7, range 1..31)
+- `target_kcal` (optional)
 
-Success response (`200 OK`, shortened):
+If `target_kcal` is omitted:
+
+- uses `/api/profile/targets/` -> `target_kcal` when available
+- falls back to `2000.00`
+
+Success: `200 OK` (shortened)
 
 ```json
 {
   "period": {
-    "start_date": "2026-04-07",
-    "end_date": "2026-04-13",
+    "start_date": "2026-04-11",
+    "end_date": "2026-04-17",
     "days": 7,
-    "days_with_logs": 2
+    "days_with_logs": 3
   },
   "target_kcal_per_day": "2000.00",
   "daily": [
     {
-      "date": "2026-04-13",
-      "log_count": 1,
-      "total_kcal": "330.00",
-      "kcal_deficit": "1670.00"
+      "date": "2026-04-17",
+      "log_count": 2,
+      "total_kcal": "1750.00",
+      "total_protein": "130.00",
+      "total_carbs": "160.00",
+      "total_fat": "60.00",
+      "kcal_deficit": "250.00"
     }
   ],
   "average": {
-    "kcal": "102.86",
-    "kcal_deficit": "1897.14",
+    "kcal": "950.00",
+    "protein": "66.00",
+    "carbs": "90.00",
+    "fat": "35.00",
+    "kcal_deficit": "1050.00",
     "deficit_interpretation": "average_deficit"
+  },
+  "insights": {
+    "average_status": "below_target",
+    "average_kcal_gap": "1050.00",
+    "logging_consistency_percent": "42.86",
+    "summary": "Average intake is below target by 1050.00 kcal/day."
   }
 }
 ```
 
-### GET /api/analytics/advanced/
+### GET `/api/analytics/advanced/`
 
-- Auth required: Yes
-- Description: Advanced analytics bundle
+Advanced analytics bundle.
 
 Query params:
 
-- `start_date` (optional): default `end_date - 29 days`
-- `end_date` (optional): default today
-- `target_kcal` (optional): default `2000`
-- `adherence_tolerance_pct` (optional): default `10`
+- `start_date` (optional; default `end_date - 29 days`)
+- `end_date` (optional; default today)
+- `target_kcal` (optional; profile target default then `2000.00`)
+- `adherence_tolerance_pct` (optional; default `10.00`)
 
-Success response (`200 OK`, shortened):
+Success: `200 OK` (shortened)
 
 ```json
 {
   "period": {
-    "start_date": "2026-04-01",
-    "end_date": "2026-04-30",
+    "start_date": "2026-03-19",
+    "end_date": "2026-04-17",
     "days": 30,
     "days_with_logs": 12
   },
@@ -496,115 +821,34 @@ Success response (`200 OK`, shortened):
       "meal_type": "lunch",
       "log_count": 15,
       "total_kcal": "9800.00",
+      "total_protein": "650.00",
+      "total_carbs": "900.00",
+      "total_fat": "260.00",
       "kcal_share_percent": "40.00"
     }
   ],
-  "weekly_trend": [
-    {
-      "week_start": "2026-04-06",
-      "logged_days": 4,
-      "total_kcal": "7800.00",
-      "avg_daily_kcal": "1950.00"
-    }
-  ],
-  "monthly_trend": [
-    {
-      "month": "2026-04",
-      "logged_days": 12,
-      "total_kcal": "24500.00",
-      "avg_daily_kcal": "2041.67"
-    }
-  ],
-  "daily_trend": [
-    {
-      "date": "2026-04-13",
-      "log_count": 2,
-      "total_kcal": "2100.00",
-      "kcal_7day_moving_avg": "1988.57"
-    }
-  ]
+  "weekly_trend": [],
+  "monthly_trend": [],
+  "daily_trend": []
 }
 ```
 
-Validation error example (`400 Bad Request`):
+## 6. Common Status Codes
 
-```json
-{
-  "code": "validation_error",
-  "message": "Request validation failed.",
-  "details": {
-    "start_date": ["start_date must be earlier than or equal to end_date."]
-  },
-  "request_id": "ce48d8dc83fc45eca0fc43abf0760160",
-  "timestamp": "2026-04-17T10:14:48.909013+08:00"
-}
-```
+- `200 OK`: successful read/update/operation
+- `201 Created`: resource created
+- `204 No Content`: successful delete
+- `205 Reset Content`: logout success
+- `400 Bad Request`: validation or request parameter issues
+- `401 Unauthorized`: missing/invalid auth credentials
+- `403 Forbidden`: permission denied
+- `404 Not Found`: resource not found or not owned by user
+- `405 Method Not Allowed`: unsupported HTTP method
+- `429 Too Many Requests`: throttled
+- `500 Internal Server Error`: unhandled server exception wrapped by standard error model
 
-## 4.4 Caching and Rate Limits
-
-- `GET /api/foods/`, `/api/logs/daily-summary/`, `/api/analytics/trends/`,
-  `/api/analytics/advanced/` return header `X-Cache: HIT|MISS`.
-- Write operations on meal logs invalidate analytics cache for the current user.
-- Rate limits are applied by endpoint category:
-  - food lookup
-  - meal write operations
-  - analytics endpoints
-- Exceeding limits returns `429 Too Many Requests` with a standard error envelope.
-
-## 4.5 Unified Error Response Model
-
-All handled API errors follow this response shape:
-
-```json
-{
-  "code": "validation_error|authentication_failed|permission_denied|resource_not_found|method_not_allowed|rate_limited|internal_error",
-  "message": "Human-readable summary",
-  "details": {
-    "field_or_detail": ["specific error details"]
-  },
-  "request_id": "<uuid-like request identifier>",
-  "timestamp": "ISO-8601 datetime"
-}
-```
-
-## 5. Standard Status Codes
-
-- `200 OK`: Read/update success
-- `201 Created`: Resource created
-- `205 Reset Content`: Logout success
-- `204 No Content`: Delete success
-- `400 Bad Request`: Validation or parameter error
-- `401 Unauthorized`: Missing/invalid authentication
-- `403 Forbidden`: Permission denied
-- `404 Not Found`: Resource does not exist or not accessible by current user
-- `405 Method Not Allowed`: Unsupported method
-- `429 Too Many Requests`: Request throttled
-
-## 6. Data Source
-
-Kaggle dataset used:
-
-https://www.kaggle.com/datasets/barkataliarbab/usda-fooddata-central-foundation-foods-2025
-
-Required CSV files:
-
-- `food.csv`
-- `food_nutrient.csv`
-- `nutrient.csv`
-
-Import command:
-
-```text
-python manage.py import_food_items --truncate --source USDA_2025
-```
-
-Notes:
-
-- Place the three files in project root or `data/` folder for auto-detection.
-- Use `--usda-dir <path>` if files are stored elsewhere.
-
-## 7. Interactive Documentation
+## 7. Interactive Docs and Schema
 
 - Swagger UI: `http://127.0.0.1:8000/api/docs/swagger/`
 - ReDoc: `http://127.0.0.1:8000/api/docs/redoc/`
-- Schema endpoint: `http://127.0.0.1:8000/api/schema/`
+- OpenAPI schema: `http://127.0.0.1:8000/api/schema/`

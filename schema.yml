@@ -39,7 +39,6 @@ paths:
           type: string
           format: decimal
           pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          default: '2000.00'
       tags:
       - analytics
       security:
@@ -80,7 +79,6 @@ paths:
           type: string
           format: decimal
           pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          default: '2000.00'
       tags:
       - analytics
       security:
@@ -92,6 +90,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TrendsResponse'
+          description: ''
+  /api/auth/account/:
+    delete:
+      operationId: auth_account_destroy
+      description: Delete authenticated user account.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/auth/export/:
+    get:
+      operationId: auth_export_retrieve
+      description: Export current user's key account and tracking data.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDataExportResponse'
           description: ''
   /api/auth/logout/:
     post:
@@ -133,6 +159,80 @@ paths:
               schema:
                 $ref: '#/components/schemas/CurrentUser'
           description: ''
+  /api/auth/password/change/:
+    post:
+      operationId: auth_password_change_create
+      description: Allow authenticated users to change password.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePassword'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/auth/password/reset/confirm/:
+    post:
+      operationId: auth_password_reset_confirm_create
+      description: Confirm password reset using uid/token pair.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/auth/password/reset/request/:
+    post:
+      operationId: auth_password_reset_request_create
+      description: Issue password reset token payload (development/coursework-friendly).
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
   /api/auth/register/:
     post:
       operationId: auth_register_create
@@ -163,6 +263,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Register'
+          description: ''
+  /api/auth/sessions/:
+    get:
+      operationId: auth_sessions_retrieve
+      description: List active refresh-token sessions for current user.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentSessionsResponse'
+          description: ''
+  /api/auth/sessions/revoke-all/:
+    post:
+      operationId: auth_sessions_revoke_all_create
+      description: Blacklist all active refresh tokens for current user.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeAllSessionsResponse'
           description: ''
   /api/auth/token/:
     post:
@@ -218,6 +350,149 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/custom-foods/:
+    get:
+      operationId: custom_foods_list
+      tags:
+      - custom-foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomFoodItem'
+          description: ''
+    post:
+      operationId: custom_foods_create
+      tags:
+      - custom-foods
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFoodItem'
+          description: ''
+  /api/custom-foods/{id}/:
+    get:
+      operationId: custom_foods_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom-foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFoodItem'
+          description: ''
+    put:
+      operationId: custom_foods_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom-foods
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomFoodItem'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFoodItem'
+          description: ''
+    patch:
+      operationId: custom_foods_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom-foods
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomFoodItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomFoodItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomFoodItem'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFoodItem'
+          description: ''
+    delete:
+      operationId: custom_foods_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom-foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/foods/:
     get:
       operationId: foods_list
@@ -352,6 +627,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedFoodItemList'
+          description: ''
+  /api/foods/favorites/:
+    get:
+      operationId: foods_favorites_list
+      description: List and create user favorites.
+      tags:
+      - foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FoodFavorite'
+          description: ''
+    post:
+      operationId: foods_favorites_create
+      description: List and create user favorites.
+      tags:
+      - foods
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodFavoriteCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FoodFavoriteCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FoodFavoriteCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodFavorite'
+          description: ''
+  /api/foods/favorites/{food_item_id}/:
+    delete:
+      operationId: foods_favorites_destroy
+      parameters:
+      - in: path
+        name: food_item_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/foods/recent/:
+    get:
+      operationId: foods_recent_list
+      description: Return user's recently consumed foods.
+      tags:
+      - foods
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecentFood'
           description: ''
   /api/logs/:
     get:
@@ -647,6 +1002,34 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/logs/bulk/:
+    post:
+      operationId: logs_bulk_create
+      description: Create multiple meal logs in one request.
+      tags:
+      - logs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealLogBulkCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealLogBulkCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealLogBulkCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLogBulkCreateResponse'
+          description: ''
   /api/logs/daily-summary/:
     get:
       operationId: logs_daily_summary_retrieve
@@ -672,6 +1055,219 @@ paths:
               schema:
                 $ref: '#/components/schemas/DailySummaryResponse'
           description: ''
+  /api/logs/quick/:
+    post:
+      operationId: logs_quick_create
+      description: Quick-create a meal log by food name.
+      tags:
+      - logs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuickMealLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/QuickMealLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/QuickMealLog'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+  /api/profile/targets/:
+    get:
+      operationId: profile_targets_retrieve
+      description: Get or update user nutrition targets.
+      tags:
+      - profile
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserNutritionTarget'
+          description: ''
+    put:
+      operationId: profile_targets_update
+      description: Get or update user nutrition targets.
+      tags:
+      - profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserNutritionTarget'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserNutritionTarget'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserNutritionTarget'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserNutritionTarget'
+          description: ''
+  /api/recipes/:
+    get:
+      operationId: recipes_list
+      tags:
+      - recipes
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recipe'
+          description: ''
+    post:
+      operationId: recipes_create
+      tags:
+      - recipes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+          description: ''
+  /api/recipes/{id}/:
+    get:
+      operationId: recipes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - recipes
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+          description: ''
+    put:
+      operationId: recipes_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - recipes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Recipe'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+          description: ''
+    patch:
+      operationId: recipes_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - recipes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRecipe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRecipe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRecipe'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+          description: ''
+    delete:
+      operationId: recipes_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - recipes
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
 components:
   schemas:
     AdvancedAnalyticsResponse:
@@ -775,6 +1371,58 @@ components:
       - fat
       - kcal
       - protein
+    AverageStatusEnum:
+      enum:
+      - below_target
+      - above_target
+      - on_target
+      type: string
+      description: |-
+        * `below_target` - below_target
+        * `above_target` - above_target
+        * `on_target` - on_target
+    ChangePassword:
+      type: object
+      properties:
+        old_password:
+          type: string
+          writeOnly: true
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        new_password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - new_password
+      - new_password_confirm
+      - old_password
+    CurrentSessionsItem:
+      type: object
+      properties:
+        jti:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - expires_at
+      - jti
+    CurrentSessionsResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrentSessionsItem'
+      required:
+      - sessions
     CurrentUser:
       type: object
       description: Serializer for /api/auth/me/ endpoint.
@@ -796,6 +1444,48 @@ components:
       required:
       - id
       - username
+    CustomFoodItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        per_100g_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - per_100g_carbs
+      - per_100g_fat
+      - per_100g_kcal
+      - per_100g_protein
+      - updated_at
     CustomTokenObtainPair:
       type: object
       description: |-
@@ -871,6 +1561,33 @@ components:
         * `vegetarian` - Vegetarian
         * `omnivore` - Omnivore
         * `other` - Other
+    FoodFavorite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        food_item:
+          type: integer
+        food_item_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - food_item
+      - food_item_name
+      - id
+    FoodFavoriteCreate:
+      type: object
+      properties:
+        food_item:
+          type: integer
+      required:
+      - food_item
     FoodItem:
       type: object
       description: Read-only serializer for food catalog lookup.
@@ -955,16 +1672,32 @@ components:
           type: string
           format: date
         meal_type:
-          $ref: '#/components/schemas/MealTypeEnum'
+          $ref: '#/components/schemas/MealLogMealTypeEnum'
         food_item:
           type: integer
+          nullable: true
         food_item_name:
+          type: string
+          readOnly: true
+        custom_food:
+          type: integer
+          nullable: true
+        custom_food_name:
           type: string
           readOnly: true
         intake_weight_grams:
           type: string
           format: decimal
           pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        unit:
+          allOf:
+          - $ref: '#/components/schemas/UnitEnum'
+          writeOnly: true
+        unit_quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          writeOnly: true
         actual_kcal:
           type: string
           format: decimal
@@ -999,14 +1732,83 @@ components:
       - actual_kcal
       - actual_protein
       - created_at
-      - food_item
+      - custom_food_name
       - food_item_name
       - id
       - intake_date
-      - intake_weight_grams
       - meal_type
       - updated_at
       - user
+    MealLogBulkCreate:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealLogBulkCreateItem'
+      required:
+      - items
+    MealLogBulkCreateItem:
+      type: object
+      properties:
+        intake_date:
+          type: string
+          format: date
+        meal_type:
+          $ref: '#/components/schemas/MealType6d6Enum'
+        food_item:
+          type: integer
+        custom_food:
+          type: integer
+        intake_weight_grams:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        unit:
+          $ref: '#/components/schemas/UnitEnum'
+        unit_quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+      required:
+      - intake_date
+      - meal_type
+    MealLogBulkCreateResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealLog'
+      required:
+      - created
+      - results
+    MealLogMealTypeEnum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      type: string
+      description: |-
+        * `breakfast` - Breakfast
+        * `lunch` - Lunch
+        * `dinner` - Dinner
+        * `snack` - Snack
+    MealType6d6Enum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      type: string
+      description: |-
+        * `breakfast` - breakfast
+        * `lunch` - lunch
+        * `dinner` - dinner
+        * `snack` - snack
     MealTypeBreakdown:
       type: object
       properties:
@@ -1042,18 +1844,6 @@ components:
       - total_fat
       - total_kcal
       - total_protein
-    MealTypeEnum:
-      enum:
-      - breakfast
-      - lunch
-      - dinner
-      - snack
-      type: string
-      description: |-
-        * `breakfast` - Breakfast
-        * `lunch` - Lunch
-        * `dinner` - Dinner
-        * `snack` - Snack
     MonthlyTrend:
       type: object
       properties:
@@ -1135,6 +1925,67 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MealLog'
+    PasswordResetConfirm:
+      type: object
+      properties:
+        uid:
+          type: string
+        token:
+          type: string
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        new_password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - new_password
+      - new_password_confirm
+      - token
+      - uid
+    PasswordResetRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    PatchedCustomFoodItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        per_100g_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        per_100g_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
     PatchedMealLog:
       type: object
       description: Serializer for creating/updating and reading meal logs.
@@ -1149,16 +2000,32 @@ components:
           type: string
           format: date
         meal_type:
-          $ref: '#/components/schemas/MealTypeEnum'
+          $ref: '#/components/schemas/MealLogMealTypeEnum'
         food_item:
           type: integer
+          nullable: true
         food_item_name:
+          type: string
+          readOnly: true
+        custom_food:
+          type: integer
+          nullable: true
+        custom_food_name:
           type: string
           readOnly: true
         intake_weight_grams:
           type: string
           format: decimal
           pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        unit:
+          allOf:
+          - $ref: '#/components/schemas/UnitEnum'
+          writeOnly: true
+        unit_quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          writeOnly: true
         actual_kcal:
           type: string
           format: decimal
@@ -1187,6 +2054,163 @@ components:
           type: string
           format: date-time
           readOnly: true
+    PatchedRecipe:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeItem'
+        total_kcal:
+          type: number
+          format: double
+          readOnly: true
+        total_protein:
+          type: number
+          format: double
+          readOnly: true
+        total_carbs:
+          type: number
+          format: double
+          readOnly: true
+        total_fat:
+          type: number
+          format: double
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    QuickMealLog:
+      type: object
+      properties:
+        food_name:
+          type: string
+          maxLength: 255
+        intake_date:
+          type: string
+          format: date
+        meal_type:
+          $ref: '#/components/schemas/MealType6d6Enum'
+        intake_weight_grams:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        unit:
+          $ref: '#/components/schemas/UnitEnum'
+        unit_quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+      required:
+      - food_name
+      - intake_date
+      - meal_type
+    RecentFood:
+      type: object
+      properties:
+        food_item:
+          type: integer
+        food_item_name:
+          type: string
+        last_used_at:
+          type: string
+          format: date-time
+        use_count:
+          type: integer
+      required:
+      - food_item
+      - food_item_name
+      - last_used_at
+      - use_count
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeItem'
+        total_kcal:
+          type: number
+          format: double
+          readOnly: true
+        total_protein:
+          type: number
+          format: double
+          readOnly: true
+        total_carbs:
+          type: number
+          format: double
+          readOnly: true
+        total_fat:
+          type: number
+          format: double
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - items
+      - name
+      - total_carbs
+      - total_fat
+      - total_kcal
+      - total_protein
+      - updated_at
+    RecipeItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        food_item:
+          type: integer
+          nullable: true
+        food_item_name:
+          type: string
+          readOnly: true
+        custom_food:
+          type: integer
+          nullable: true
+        custom_food_name:
+          type: string
+          readOnly: true
+        weight_grams:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+      required:
+      - custom_food_name
+      - food_item_name
+      - id
+      - weight_grams
     Register:
       type: object
       description: Serializer for account creation.
@@ -1203,8 +2227,6 @@ components:
         email:
           type: string
           format: email
-          title: Email address
-          maxLength: 254
         password:
           type: string
           writeOnly: true
@@ -1214,10 +2236,18 @@ components:
           writeOnly: true
           minLength: 8
       required:
+      - email
       - id
       - password
       - password_confirm
       - username
+    RevokeAllSessionsResponse:
+      type: object
+      properties:
+        revoked_sessions:
+          type: integer
+      required:
+      - revoked_sessions
     TargetAchievement:
       type: object
       properties:
@@ -1327,6 +2357,26 @@ components:
       - total_fat
       - total_kcal
       - total_protein
+    TrendsInsights:
+      type: object
+      properties:
+        average_status:
+          $ref: '#/components/schemas/AverageStatusEnum'
+        average_kcal_gap:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        logging_consistency_percent:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
+        summary:
+          type: string
+      required:
+      - average_kcal_gap
+      - average_status
+      - logging_consistency_percent
+      - summary
     TrendsPeriod:
       type: object
       properties:
@@ -1360,11 +2410,80 @@ components:
             $ref: '#/components/schemas/TrendsDailyEntry'
         average:
           $ref: '#/components/schemas/TrendsAverage'
+        insights:
+          $ref: '#/components/schemas/TrendsInsights'
       required:
       - average
       - daily
+      - insights
       - period
       - target_kcal_per_day
+    UnitEnum:
+      enum:
+      - cup
+      - g
+      - gram
+      - grams
+      - piece
+      - tbsp
+      type: string
+      description: |-
+        * `cup` - cup
+        * `g` - g
+        * `gram` - gram
+        * `grams` - grams
+        * `piece` - piece
+        * `tbsp` - tbsp
+    UserDataExportResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/CurrentUser'
+        nutrition_target:
+          $ref: '#/components/schemas/UserNutritionTarget'
+        favorites:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodFavorite'
+        custom_food_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomFoodItem'
+        meal_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealLog'
+      required:
+      - custom_food_items
+      - favorites
+      - meal_logs
+      - nutrition_target
+      - user
+    UserNutritionTarget:
+      type: object
+      properties:
+        target_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        target_protein:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        target_carbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        target_fat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - updated_at
     WeeklyTrend:
       type: object
       properties:

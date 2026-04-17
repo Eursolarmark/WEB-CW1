@@ -5,6 +5,10 @@ class BurstUserRateThrottle(UserRateThrottle):
     scope = "user_burst"
 
 
+class AuthRateThrottle(UserRateThrottle):
+    scope = "auth"
+
+
 class FoodLookupRateThrottle(UserRateThrottle):
     scope = "food_lookup"
 

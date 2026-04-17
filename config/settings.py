@@ -158,6 +158,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "100/hour",
         "user_burst": "300/minute",
+        "auth": "30/minute",
         "food_lookup": "240/minute",
         "meal_write": "60/minute",
         "analytics": "90/minute",

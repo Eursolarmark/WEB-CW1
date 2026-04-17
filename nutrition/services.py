@@ -117,6 +117,19 @@ class NutritionAnalyticsService:
         else:
             deficit_interpretation = "on_target"
 
+        avg_kcal = cls._q(total_kcal / divisor)
+        average_kcal_gap = cls._q(Decimal(target_kcal) - avg_kcal)
+        if average_kcal_gap > cls.ZERO:
+            average_status = "below_target"
+            summary = f"Average intake is below target by {average_kcal_gap} kcal/day."
+        elif average_kcal_gap < cls.ZERO:
+            average_status = "above_target"
+            summary = f"Average intake is above target by {abs(average_kcal_gap)} kcal/day."
+        else:
+            average_status = "on_target"
+            summary = "Average intake is on target."
+        logging_consistency = cls._q((Decimal(days_with_logs) / divisor) * Decimal("100"))
+
         return {
             "period": {
                 "start_date": start_date,
@@ -127,12 +140,18 @@ class NutritionAnalyticsService:
             "target_kcal_per_day": cls._q(target_kcal),
             "daily": daily_entries,
             "average": {
-                "kcal": cls._q(total_kcal / divisor),
+                "kcal": avg_kcal,
                 "protein": cls._q(total_protein / divisor),
                 "carbs": cls._q(total_carbs / divisor),
                 "fat": cls._q(total_fat / divisor),
                 "kcal_deficit": avg_deficit,
                 "deficit_interpretation": deficit_interpretation,
+            },
+            "insights": {
+                "average_status": average_status,
+                "average_kcal_gap": average_kcal_gap,
+                "logging_consistency_percent": logging_consistency,
+                "summary": summary,
             },
         }
 
