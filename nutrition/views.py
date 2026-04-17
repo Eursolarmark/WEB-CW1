@@ -2,11 +2,12 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from nutrition.cache_utils import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
@@ -20,10 +21,13 @@ from nutrition.pagination import StandardResultsSetPagination
 from nutrition.serializers import (
     AdvancedAnalyticsQuerySerializer,
     AdvancedAnalyticsResponseSerializer,
+    CustomTokenObtainPairSerializer,
+    CurrentUserSerializer,
     DailySummaryResponseSerializer,
     DailySummaryQuerySerializer,
     FoodItemListQuerySerializer,
     FoodItemSerializer,
+    LogoutSerializer,
     MealLogListQuerySerializer,
     MealLogSerializer,
     RegisterSerializer,
@@ -56,6 +60,39 @@ class RegisterAPIView(generics.CreateAPIView):
     permission_classes = [AllowAny]
 
 
+class CustomTokenObtainPairAPIView(TokenObtainPairView):
+    """JWT login endpoint supporting username or email identifier."""
+
+    serializer_class = CustomTokenObtainPairSerializer
+    permission_classes = [AllowAny]
+
+
+class CurrentUserAPIView(APIView):
+    """Return profile of currently authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: CurrentUserSerializer})
+    def get(self, request, *args, **kwargs):
+        serializer = CurrentUserSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class LogoutAPIView(APIView):
+    """Blacklist refresh token to terminate session."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=LogoutSerializer, responses={205: None})
+    def post(self, request, *args, **kwargs):
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(status=status.HTTP_205_RESET_CONTENT)
+
+
+@extend_schema_view(
+    get=extend_schema(parameters=[MealLogListQuerySerializer]),
+)
 class MealLogListCreateAPIView(generics.ListCreateAPIView):
     """
     /api/logs/
@@ -116,6 +153,9 @@ class MealLogListCreateAPIView(generics.ListCreateAPIView):
         bump_analytics_cache_version(self.request.user.id)
 
 
+@extend_schema_view(
+    get=extend_schema(parameters=[FoodItemListQuerySerializer]),
+)
 class FoodItemListAPIView(generics.ListAPIView):
     """
     /api/foods/

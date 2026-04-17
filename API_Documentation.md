@@ -62,6 +62,7 @@ Success response (`201 Created`):
 - Method: `POST`
 - URL: `/api/auth/token/`
 - Auth required: No
+- Login identifier: send either `username` or `email` in the `username` field
 
 Request body:
 
@@ -94,6 +95,46 @@ Request body:
   "refresh": "<refresh_token>"
 }
 ```
+
+### 2.4 Current User Profile
+
+- Method: `GET`
+- URL: `/api/auth/me/`
+- Auth required: Yes
+
+Success response (`200 OK`):
+
+```json
+{
+  "id": 1,
+  "username": "alice",
+  "email": "alice@example.com"
+}
+```
+
+### 2.5 Logout (Blacklist Refresh Token)
+
+- Method: `POST`
+- URL: `/api/auth/logout/`
+- Auth required: Yes
+- Description: Blacklists provided refresh token so it cannot be used again.
+
+Request body:
+
+```json
+{
+  "refresh": "<refresh_token>"
+}
+```
+
+Success response: `205 Reset Content` (empty body)
+
+### 2.6 JWT Session Policy
+
+- `access` token lifetime: `15 minutes`
+- `refresh` token lifetime: `7 days`
+- refresh token rotation: enabled
+- blacklisting after rotation/logout: enabled
 
 Success response (`200 OK`):
 
@@ -156,13 +197,20 @@ Query params:
 
 - `q` (optional): fuzzy search by food name
 - `diet_type` (optional): filter by enum value
+- `kcal_min`, `kcal_max` (optional): filter by kcal per 100g range
+- `protein_min`, `protein_max` (optional): filter by protein per 100g range
+- `carbs_min`, `carbs_max` (optional): filter by carbs per 100g range
+- `fat_min`, `fat_max` (optional): filter by fat per 100g range
+- `ordering` (optional): one of `name`, `-name`, `per_100g_kcal`, `-per_100g_kcal`,
+  `per_100g_protein`, `-per_100g_protein`, `per_100g_carbs`, `-per_100g_carbs`,
+  `per_100g_fat`, `-per_100g_fat`
 - `page` (optional): page number, starts from `1`
 - `page_size` (optional): `1..100`
 
 Example:
 
 ```text
-GET /api/foods/?q=rice&diet_type=vegan
+GET /api/foods/?diet_type=vegan&protein_min=5&kcal_max=400&ordering=-per_100g_protein
 ```
 
 Success response (`200 OK`):
@@ -197,6 +245,16 @@ Success response (`200 OK`):
 Query params:
 
 - `date` (optional): `YYYY-MM-DD`
+- `start_date`, `end_date` (optional): date range filter
+- `meal_type` (optional): single value in `breakfast|lunch|dinner|snack`
+- `meal_types` (optional): CSV multi-filter, e.g. `breakfast,dinner`
+- `kcal_min`, `kcal_max` (optional): actual kcal range filter
+- `protein_min`, `protein_max` (optional): actual protein range filter
+- `carbs_min`, `carbs_max` (optional): actual carbs range filter
+- `fat_min`, `fat_max` (optional): actual fat range filter
+- `ordering` (optional): one of `intake_date`, `-intake_date`, `created_at`, `-created_at`,
+  `actual_kcal`, `-actual_kcal`, `actual_protein`, `-actual_protein`, `actual_carbs`,
+  `-actual_carbs`, `actual_fat`, `-actual_fat`
 - `page` (optional): page number, starts from `1`
 - `page_size` (optional): `1..100`
 
@@ -231,7 +289,13 @@ Validation error example (`400 Bad Request`):
 
 ```json
 {
-  "date": ["Date has wrong format. Use one of these formats instead: YYYY-MM-DD."]
+  "code": "validation_error",
+  "message": "Request validation failed.",
+  "details": {
+    "date": ["Date has wrong format. Use one of these formats instead: YYYY-MM-DD."]
+  },
+  "request_id": "7c3376f11abf4697b5d9d2d0e8f35eaa",
+  "timestamp": "2026-04-17T10:12:33.215942+08:00"
 }
 ```
 
@@ -337,7 +401,13 @@ Validation error (`400 Bad Request`):
 
 ```json
 {
-  "date": ["This field is required."]
+  "code": "validation_error",
+  "message": "Request validation failed.",
+  "details": {
+    "date": ["This field is required."]
+  },
+  "request_id": "f934d8e2a0fa4dc5961f1de4f9521db5",
+  "timestamp": "2026-04-17T10:13:22.551998+08:00"
 }
 ```
 
@@ -460,7 +530,40 @@ Validation error example (`400 Bad Request`):
 
 ```json
 {
-  "start_date": ["start_date must be earlier than or equal to end_date."]
+  "code": "validation_error",
+  "message": "Request validation failed.",
+  "details": {
+    "start_date": ["start_date must be earlier than or equal to end_date."]
+  },
+  "request_id": "ce48d8dc83fc45eca0fc43abf0760160",
+  "timestamp": "2026-04-17T10:14:48.909013+08:00"
+}
+```
+
+## 4.4 Caching and Rate Limits
+
+- `GET /api/foods/`, `/api/logs/daily-summary/`, `/api/analytics/trends/`,
+  `/api/analytics/advanced/` return header `X-Cache: HIT|MISS`.
+- Write operations on meal logs invalidate analytics cache for the current user.
+- Rate limits are applied by endpoint category:
+  - food lookup
+  - meal write operations
+  - analytics endpoints
+- Exceeding limits returns `429 Too Many Requests` with a standard error envelope.
+
+## 4.5 Unified Error Response Model
+
+All handled API errors follow this response shape:
+
+```json
+{
+  "code": "validation_error|authentication_failed|permission_denied|resource_not_found|method_not_allowed|rate_limited|internal_error",
+  "message": "Human-readable summary",
+  "details": {
+    "field_or_detail": ["specific error details"]
+  },
+  "request_id": "<uuid-like request identifier>",
+  "timestamp": "ISO-8601 datetime"
 }
 ```
 
@@ -468,10 +571,14 @@ Validation error example (`400 Bad Request`):
 
 - `200 OK`: Read/update success
 - `201 Created`: Resource created
+- `205 Reset Content`: Logout success
 - `204 No Content`: Delete success
 - `400 Bad Request`: Validation or parameter error
 - `401 Unauthorized`: Missing/invalid authentication
+- `403 Forbidden`: Permission denied
 - `404 Not Found`: Resource does not exist or not accessible by current user
+- `405 Method Not Allowed`: Unsupported method
+- `429 Too Many Requests`: Request throttled
 
 ## 6. Data Source
 

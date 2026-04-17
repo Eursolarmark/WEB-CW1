@@ -1,8 +1,13 @@
 from decimal import Decimal
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Q
 from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.settings import api_settings as jwt_api_settings
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from nutrition.models import FoodItem, MealLog
 
@@ -226,6 +231,82 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
+
+
+class CurrentUserSerializer(serializers.ModelSerializer):
+    """Serializer for /api/auth/me/ endpoint."""
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email"]
+
+
+class LogoutSerializer(serializers.Serializer):
+    """Serializer for logout endpoint that blacklists refresh token."""
+
+    refresh = serializers.CharField()
+
+    def validate(self, attrs):
+        refresh = attrs.get("refresh")
+        try:
+            token = RefreshToken(refresh)
+            token.blacklist()
+        except TokenError as exc:
+            raise serializers.ValidationError({"refresh": str(exc)}) from exc
+        return attrs
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Support login via username or email in the `username` field.
+
+    This keeps compatibility with SimpleJWT default request shape while
+    making login UX friendlier for users.
+    """
+
+    default_error_messages = {
+        "no_active_account": "No active account found with the given credentials.",
+    }
+
+    def _resolve_username(self, identifier: str) -> str:
+        username_field = self.username_field
+        user = User.objects.filter(**{f"{username_field}__iexact": identifier}).first()
+        if user:
+            return user.get_username()
+
+        email_user = User.objects.filter(Q(email__iexact=identifier)).order_by("id").first()
+        if email_user:
+            return email_user.get_username()
+
+        return identifier
+
+    def validate(self, attrs):
+        credentials = {
+            self.username_field: self._resolve_username(attrs.get(self.username_field, "")),
+            "password": attrs.get("password"),
+        }
+        request = self.context.get("request")
+        if request is not None:
+            credentials["request"] = request
+
+        self.user = authenticate(**credentials)
+        if not jwt_api_settings.USER_AUTHENTICATION_RULE(self.user):
+            raise AuthenticationFailed(
+                self.error_messages["no_active_account"],
+                "no_active_account",
+            )
+
+        refresh = self.get_token(self.user)
+        data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
+
+        if jwt_api_settings.UPDATE_LAST_LOGIN:
+            from django.contrib.auth.models import update_last_login
+
+            update_last_login(None, self.user)
+        return data
 
 
 class DailySummaryQuerySerializer(serializers.Serializer):

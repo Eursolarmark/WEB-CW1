@@ -3,6 +3,7 @@
 Nutrition and meal tracking backend built with Django + DRF.
 
 Detailed API examples: [API_Documentation.md](./API_Documentation.md)
+API documentation PDF: [API_Documentation.pdf](./API_Documentation.pdf)
 Version notes: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Quick Start (Most Common)
@@ -99,9 +100,3 @@ Current test scope:
 - Food endpoints (list/filter/validation)
 - Meal log CRUD and user-level data isolation
 - Analytics endpoints and model calculation behavior
-
-## Version Timeline
-
-- `v0.1`: Initial working API with auth, CRUD, and analytics endpoints.
-- `v0.2`: Added automated test suite (20 tests) to improve reliability.
-- `v1.0`: Planned advanced capabilities (throttling, caching, advanced filters, unified error model).

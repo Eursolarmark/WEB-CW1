@@ -93,6 +93,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrendsResponse'
           description: ''
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Blacklist refresh token to terminate session.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Logout'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '205':
+          description: No response body
+  /api/auth/me/:
+    get:
+      operationId: auth_me_retrieve
+      description: Return profile of currently authenticated user.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+          description: ''
   /api/auth/register/:
     post:
       operationId: auth_register_create
@@ -127,29 +167,29 @@ paths:
   /api/auth/token/:
     post:
       operationId: auth_token_create
-      description: |-
-        Takes a set of user credentials and returns an access and refresh JSON web
-        token pair to prove the authentication of those credentials.
+      description: JWT login endpoint supporting username or email identifier.
       tags:
       - auth
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TokenObtainPair'
+              $ref: '#/components/schemas/CustomTokenObtainPair'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/TokenObtainPair'
+              $ref: '#/components/schemas/CustomTokenObtainPair'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/TokenObtainPair'
+              $ref: '#/components/schemas/CustomTokenObtainPair'
         required: true
+      security:
+      - {}
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenObtainPair'
+                $ref: '#/components/schemas/CustomTokenObtainPair'
           description: ''
   /api/auth/token/refresh/:
     post:
@@ -188,6 +228,89 @@ paths:
           - q: case-insensitive search in name
           - diet_type: filter by enum value (e.g. vegan/high_protein)
       parameters:
+      - in: query
+        name: carbs_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: carbs_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: diet_type
+        schema:
+          enum:
+          - high_protein
+          - keto
+          - vegan
+          - vegetarian
+          - omnivore
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          * `high_protein` - high_protein
+          * `keto` - keto
+          * `vegan` - vegan
+          * `vegetarian` - vegetarian
+          * `omnivore` - omnivore
+          * `other` - other
+      - in: query
+        name: fat_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: fat_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: kcal_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: kcal_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: ordering
+        schema:
+          enum:
+          - name
+          - -name
+          - per_100g_kcal
+          - -per_100g_kcal
+          - per_100g_protein
+          - -per_100g_protein
+          - per_100g_carbs
+          - -per_100g_carbs
+          - per_100g_fat
+          - -per_100g_fat
+          type: string
+          default: name
+          minLength: 1
+        description: |-
+          * `name` - name
+          * `-name` - -name
+          * `per_100g_kcal` - per_100g_kcal
+          * `-per_100g_kcal` - -per_100g_kcal
+          * `per_100g_protein` - per_100g_protein
+          * `-per_100g_protein` - -per_100g_protein
+          * `per_100g_carbs` - per_100g_carbs
+          * `-per_100g_carbs` - -per_100g_carbs
+          * `per_100g_fat` - per_100g_fat
+          * `-per_100g_fat` - -per_100g_fat
       - name: page
         required: false
         in: query
@@ -200,6 +323,24 @@ paths:
         description: Number of results to return per page.
         schema:
           type: integer
+      - in: query
+        name: protein_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: protein_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: q
+        schema:
+          type: string
+          maxLength: 255
+          minLength: 1
       tags:
       - foods
       security:
@@ -220,6 +361,105 @@ paths:
         - POST: Create a meal log entry
         - GET: List meal logs (optional filter by intake_date via ?date=YYYY-MM-DD)
       parameters:
+      - in: query
+        name: carbs_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: carbs_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: fat_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: fat_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: kcal_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: kcal_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: meal_type
+        schema:
+          enum:
+          - breakfast
+          - lunch
+          - dinner
+          - snack
+          type: string
+          minLength: 1
+        description: |-
+          * `breakfast` - breakfast
+          * `lunch` - lunch
+          * `dinner` - dinner
+          * `snack` - snack
+      - in: query
+        name: meal_types
+        schema:
+          type: string
+          maxLength: 128
+          minLength: 1
+      - in: query
+        name: ordering
+        schema:
+          enum:
+          - intake_date
+          - -intake_date
+          - created_at
+          - -created_at
+          - actual_kcal
+          - -actual_kcal
+          - actual_protein
+          - -actual_protein
+          - actual_carbs
+          - -actual_carbs
+          - actual_fat
+          - -actual_fat
+          type: string
+          default: -intake_date
+          minLength: 1
+        description: |-
+          * `intake_date` - intake_date
+          * `-intake_date` - -intake_date
+          * `created_at` - created_at
+          * `-created_at` - -created_at
+          * `actual_kcal` - actual_kcal
+          * `-actual_kcal` - -actual_kcal
+          * `actual_protein` - actual_protein
+          * `-actual_protein` - -actual_protein
+          * `actual_carbs` - actual_carbs
+          * `-actual_carbs` - -actual_carbs
+          * `actual_fat` - actual_fat
+          * `-actual_fat` - -actual_fat
       - name: page
         required: false
         in: query
@@ -232,6 +472,23 @@ paths:
         description: Number of results to return per page.
         schema:
           type: integer
+      - in: query
+        name: protein_max
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: protein_min
+        schema:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
       tags:
       - logs
       security:
@@ -518,6 +775,44 @@ components:
       - fat
       - kcal
       - protein
+    CurrentUser:
+      type: object
+      description: Serializer for /api/auth/me/ endpoint.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+      required:
+      - id
+      - username
+    CustomTokenObtainPair:
+      type: object
+      description: |-
+        Support login via username or email in the `username` field.
+
+        This keeps compatibility with SimpleJWT default request shape while
+        making login UX friendlier for users.
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - password
+      - username
     DailySummaryResponse:
       type: object
       description: Response serializer for daily summary endpoint.
@@ -619,6 +914,14 @@ components:
       - per_100g_fat
       - per_100g_kcal
       - per_100g_protein
+    Logout:
+      type: object
+      description: Serializer for logout endpoint that blacklists refresh token.
+      properties:
+        refresh:
+          type: string
+      required:
+      - refresh
     MacroRatioPercent:
       type: object
       properties:
@@ -945,26 +1248,6 @@ components:
       - days_met_target
       - logged_days
       - target_kcal_per_day
-    TokenObtainPair:
-      type: object
-      properties:
-        username:
-          type: string
-          writeOnly: true
-        password:
-          type: string
-          writeOnly: true
-        access:
-          type: string
-          readOnly: true
-        refresh:
-          type: string
-          readOnly: true
-      required:
-      - access
-      - password
-      - refresh
-      - username
     TokenRefresh:
       type: object
       properties:
@@ -973,7 +1256,6 @@ components:
           readOnly: true
         refresh:
           type: string
-          writeOnly: true
       required:
       - access
       - refresh
