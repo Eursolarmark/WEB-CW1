@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from nutrition.models import FoodFavorite, FoodItem, MealLog, UserNutritionTarget
+from nutrition.models import FoodFavorite, FoodItem, MealLog
 
 User = get_user_model()
 
@@ -33,62 +33,6 @@ class UserExperienceFeatureTests(APITestCase):
             source="TEST",
         )
 
-    def test_quick_log_by_food_name_with_unit(self):
-        response = self.client.post(
-            reverse("meal-log-quick-create"),
-            {
-                "food_name": "banana",
-                "intake_date": "2026-04-17",
-                "meal_type": "snack",
-                "unit": "piece",
-                "unit_quantity": "1.00",
-            },
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["food_item"], self.food.id)
-        self.assertEqual(as_decimal(response.data["intake_weight_grams"]), Decimal("50.00"))
-        self.assertEqual(as_decimal(response.data["actual_kcal"]), Decimal("44.50"))
-
-    def test_bulk_create_supports_idempotency(self):
-        url = reverse("meal-log-bulk-create")
-        payload = {
-            "items": [
-                {
-                    "intake_date": "2026-04-17",
-                    "meal_type": "breakfast",
-                    "food_item": self.food.id,
-                    "intake_weight_grams": "100.00",
-                },
-                {
-                    "intake_date": "2026-04-17",
-                    "meal_type": "lunch",
-                    "food_item": self.food.id,
-                    "unit": "piece",
-                    "unit_quantity": "2.00",
-                },
-            ]
-        }
-
-        first = self.client.post(
-            url,
-            payload,
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="bulk-001",
-        )
-        second = self.client.post(
-            url,
-            payload,
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="bulk-001",
-        )
-
-        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(second["X-Idempotent-Replay"], "true")
-        self.assertEqual(MealLog.objects.filter(user=self.user).count(), 2)
-
     def test_favorites_flow(self):
         create_response = self.client.post(
             reverse("food-favorite-list-create"),
@@ -107,14 +51,7 @@ class UserExperienceFeatureTests(APITestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(FoodFavorite.objects.filter(user=self.user, food_item=self.food).exists())
 
-    def test_user_target_is_default_for_trends_when_target_not_provided(self):
-        UserNutritionTarget.objects.create(
-            user=self.user,
-            target_kcal=Decimal("1500.00"),
-            target_protein=Decimal("100.00"),
-            target_carbs=Decimal("180.00"),
-            target_fat=Decimal("50.00"),
-        )
+    def test_trends_target_defaults_and_accepts_override(self):
         MealLog.objects.create(
             user=self.user,
             intake_date=date(2026, 4, 17),
@@ -123,10 +60,16 @@ class UserExperienceFeatureTests(APITestCase):
             intake_weight_grams=Decimal("100.00"),
         )
 
-        response = self.client.get(
+        default_response = self.client.get(
             reverse("nutrition-trends"),
             {"end_date": "2026-04-17", "days": 1},
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(as_decimal(response.data["target_kcal_per_day"]), Decimal("1500.00"))
+        self.assertEqual(default_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(as_decimal(default_response.data["target_kcal_per_day"]), Decimal("2000.00"))
 
+        override_response = self.client.get(
+            reverse("nutrition-trends"),
+            {"end_date": "2026-04-17", "days": 1, "target_kcal": "1500.00"},
+        )
+        self.assertEqual(override_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(as_decimal(override_response.data["target_kcal_per_day"]), Decimal("1500.00"))

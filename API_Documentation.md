@@ -52,8 +52,6 @@ Supported endpoints:
 
 - `POST /api/foods/favorites/`
 - `POST /api/logs/`
-- `POST /api/logs/quick/`
-- `POST /api/logs/bulk/`
 
 Behavior:
 
@@ -66,7 +64,6 @@ Behavior:
 Cached endpoints:
 
 - `GET /api/foods/` (TTL 120s)
-- `GET /api/foods/search/` (TTL 120s)
 - `GET /api/logs/daily-summary/` (TTL 180s)
 - `GET /api/analytics/trends/` (TTL 180s)
 - `GET /api/analytics/advanced/` (TTL 180s)
@@ -108,17 +105,9 @@ Handled errors return this shape:
 
 ### 4.2 Weight Input Rule
 
-Meal log create endpoints support either:
+Meal log create endpoints require:
 
-- direct grams: `intake_weight_grams`
-- unit conversion: `unit` + `unit_quantity`
-
-Supported units and conversion:
-
-- `g`, `gram`, `grams` -> 1g
-- `piece` -> 50g
-- `cup` -> 240g
-- `tbsp` -> 15g
+- `intake_weight_grams`
 
 ## 5. Endpoint Reference
 
@@ -213,7 +202,7 @@ Success: `200 OK`
 
 ---
 
-## 5.2 Food Catalog, Recent, Favorites
+## 5.2 Food Catalog and Favorites
 
 ### GET `/api/foods/`
 
@@ -249,66 +238,6 @@ Success: `200 OK`
     }
   ]
 }
-```
-
-### GET `/api/foods/search/`
-
-Fuzzy search by approximate food name.  
-Returns similar entries sorted by relevance (includes `id`, `name`, and nutrition fields).
-
-Query params:
-
-- `q` (required, min length 1)
-- `limit` (optional, default 10, range 1..50)
-
-Success: `200 OK`
-
-```json
-{
-  "message": "Found 1 close matches.",
-  "results": [
-    {
-      "id": 298,
-      "name": "Chicken Breast",
-      "diet_type": "high_protein",
-      "per_100g_kcal": "165.00",
-      "per_100g_protein": "31.00",
-      "per_100g_carbs": "0.00",
-      "per_100g_fat": "3.60",
-      "source": "USDA_2025"
-    }
-  ]
-}
-```
-
-No close match example (`200 OK`):
-
-```json
-{
-  "message": "No close matches found.",
-  "results": []
-}
-```
-
-### GET `/api/foods/recent/`
-
-List foods recently logged by current user.
-
-Query params:
-
-- `limit` (optional, default 20, range 1..100)
-
-Success: `200 OK`
-
-```json
-[
-  {
-    "food_item": 298,
-    "food_item_name": "Hummus, Commercial",
-    "last_used_at": "2026-04-17T10:00:00Z",
-    "use_count": 4
-  }
-]
 ```
 
 ### GET `/api/foods/favorites/`
@@ -379,79 +308,11 @@ Request (grams mode):
 }
 ```
 
-Request (unit mode):
-
-```json
-{
-  "intake_date": "2026-04-17",
-  "meal_type": "snack",
-  "food_item": 298,
-  "unit": "piece",
-  "unit_quantity": "2.00"
-}
-```
-
-### POST `/api/logs/quick/`
-
-Quick create by `food_name` (exact match in `FoodItem`).
-
-Request:
-
-```json
-{
-  "food_name": "banana",
-  "intake_date": "2026-04-17",
-  "meal_type": "snack",
-  "unit": "piece",
-  "unit_quantity": "1.00"
-}
-```
-
-On no exact match: `400 Bad Request` with candidate suggestions.
-
-### POST `/api/logs/bulk/`
-
-Bulk create logs (`items` length 1..100).
-
-Request:
-
-```json
-{
-  "items": [
-    {
-      "intake_date": "2026-04-17",
-      "meal_type": "breakfast",
-      "food_item": 298,
-      "intake_weight_grams": "100.00"
-    },
-    {
-      "intake_date": "2026-04-17",
-      "meal_type": "lunch",
-      "food_item": 298,
-      "unit": "piece",
-      "unit_quantity": "2.00"
-    }
-  ]
-}
-```
-
-Success: `201 Created`
-
-```json
-{
-  "created": 2,
-  "results": [
-    {"id": 11, "meal_type": "breakfast", "actual_kcal": "120.00"},
-    {"id": 12, "meal_type": "lunch", "actual_kcal": "180.00"}
-  ]
-}
-```
-
 ### GET `/api/logs/{id}/`
 
 Retrieve single log (owner only).
 
-### PUT/PATCH `/api/logs/{id}/`
+### PUT `/api/logs/{id}/`
 
 Update log (owner only).
 
@@ -478,42 +339,7 @@ Success: `200 OK`
 
 ---
 
-## 5.4 Profile Targets
-
-### GET `/api/profile/targets/`
-
-Get current user nutrition target.
-
-### PUT `/api/profile/targets/`
-
-Update target.
-
-Request:
-
-```json
-{
-  "target_kcal": "2100.00",
-  "target_protein": "140.00",
-  "target_carbs": "220.00",
-  "target_fat": "70.00"
-}
-```
-
-Success: `200 OK`
-
-```json
-{
-  "target_kcal": "2100.00",
-  "target_protein": "140.00",
-  "target_carbs": "220.00",
-  "target_fat": "70.00",
-  "updated_at": "2026-04-17T11:22:00Z"
-}
-```
-
----
-
-## 5.5 Analytics
+## 5.4 Analytics
 
 ### GET `/api/analytics/trends/`
 
@@ -525,10 +351,7 @@ Query params:
 - `days` (optional, default 7, range 1..31)
 - `target_kcal` (optional)
 
-If `target_kcal` is omitted:
-
-- uses `/api/profile/targets/` -> `target_kcal` when available
-- falls back to `2000.00`
+If `target_kcal` is omitted, it defaults to `2000.00`.
 
 Success: `200 OK` (shortened)
 
@@ -577,7 +400,7 @@ Query params:
 
 - `start_date` (optional; default `end_date - 29 days`)
 - `end_date` (optional; default today)
-- `target_kcal` (optional; profile target default then `2000.00`)
+- `target_kcal` (optional; defaults to `2000.00`)
 - `adherence_tolerance_pct` (optional; default `10.00`)
 
 Success: `200 OK` (shortened)

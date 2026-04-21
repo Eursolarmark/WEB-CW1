@@ -8,7 +8,7 @@ from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings as jwt_api_settings
 
-from nutrition.models import FoodFavorite, FoodItem, MealLog, UserNutritionTarget
+from nutrition.models import FoodFavorite, FoodItem, MealLog
 
 User = get_user_model()
 
@@ -16,32 +16,11 @@ User = get_user_model()
 class MealLogSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating and reading meal logs."""
 
-    UNIT_TO_GRAMS = {
-        "g": Decimal("1"),
-        "gram": Decimal("1"),
-        "grams": Decimal("1"),
-        "piece": Decimal("50"),
-        "cup": Decimal("240"),
-        "tbsp": Decimal("15"),
-    }
-
     user = serializers.IntegerField(source="user_id", read_only=True)
     food_item_name = serializers.CharField(source="food_item.name", read_only=True)
     intake_weight_grams = serializers.DecimalField(
         required=False,
         max_digits=7,
-        decimal_places=2,
-        min_value=Decimal("0.01"),
-    )
-    unit = serializers.ChoiceField(
-        required=False,
-        write_only=True,
-        choices=sorted(UNIT_TO_GRAMS.keys()),
-    )
-    unit_quantity = serializers.DecimalField(
-        required=False,
-        write_only=True,
-        max_digits=8,
         decimal_places=2,
         min_value=Decimal("0.01"),
     )
@@ -56,8 +35,6 @@ class MealLogSerializer(serializers.ModelSerializer):
             "food_item",
             "food_item_name",
             "intake_weight_grams",
-            "unit",
-            "unit_quantity",
             "actual_kcal",
             "actual_protein",
             "actual_carbs",
@@ -85,20 +62,10 @@ class MealLogSerializer(serializers.ModelSerializer):
             )
 
         intake_weight_grams = attrs.get("intake_weight_grams")
-        unit = attrs.pop("unit", None)
-        unit_quantity = attrs.pop("unit_quantity", None)
-
-        if self.instance is None and intake_weight_grams is None and unit is None:
+        if self.instance is None and intake_weight_grams is None:
             raise serializers.ValidationError(
-                {"intake_weight_grams": "Provide intake_weight_grams, or use unit + unit_quantity."}
+                {"intake_weight_grams": "intake_weight_grams is required."}
             )
-        if unit and unit_quantity is None:
-            raise serializers.ValidationError({"unit_quantity": "unit_quantity is required with unit."})
-
-        if intake_weight_grams is None and unit and unit_quantity is not None:
-            attrs["intake_weight_grams"] = (
-                Decimal(unit_quantity) * self.UNIT_TO_GRAMS[unit]
-            ).quantize(Decimal("0.01"))
 
         return attrs
 
@@ -262,20 +229,6 @@ class FoodItemListQuerySerializer(serializers.Serializer):
         return attrs
 
 
-class FoodFuzzySearchQuerySerializer(serializers.Serializer):
-    """Query serializer for fuzzy food name search endpoint."""
-
-    q = serializers.CharField(required=True, allow_blank=False, min_length=1, max_length=255)
-    limit = serializers.IntegerField(required=False, default=10, min_value=1, max_value=50)
-
-
-class FoodFuzzySearchResponseSerializer(serializers.Serializer):
-    """Response serializer for fuzzy food search endpoint."""
-
-    message = serializers.CharField()
-    results = FoodItemSerializer(many=True)
-
-
 class RegisterSerializer(serializers.ModelSerializer):
     """Serializer for account creation."""
 
@@ -366,19 +319,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
-class UserNutritionTargetSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserNutritionTarget
-        fields = [
-            "target_kcal",
-            "target_protein",
-            "target_carbs",
-            "target_fat",
-            "updated_at",
-        ]
-        read_only_fields = ["updated_at"]
-
-
 class FoodFavoriteSerializer(serializers.ModelSerializer):
     food_item_name = serializers.CharField(source="food_item.name", read_only=True)
     food_item = serializers.IntegerField(source="food_item_id")
@@ -391,78 +331,6 @@ class FoodFavoriteSerializer(serializers.ModelSerializer):
 
 class FoodFavoriteCreateSerializer(serializers.Serializer):
     food_item = serializers.PrimaryKeyRelatedField(queryset=FoodItem.objects.all())
-
-
-class RecentFoodSerializer(serializers.Serializer):
-    food_item = serializers.IntegerField()
-    food_item_name = serializers.CharField()
-    last_used_at = serializers.DateTimeField()
-    use_count = serializers.IntegerField()
-
-
-class QuickMealLogSerializer(serializers.Serializer):
-    food_name = serializers.CharField(max_length=255)
-    intake_date = serializers.DateField()
-    meal_type = serializers.ChoiceField(choices=[choice for choice, _ in MealLog.MealType.choices])
-    intake_weight_grams = serializers.DecimalField(
-        required=False,
-        max_digits=7,
-        decimal_places=2,
-        min_value=Decimal("0.01"),
-    )
-    unit = serializers.ChoiceField(required=False, choices=sorted(MealLogSerializer.UNIT_TO_GRAMS.keys()))
-    unit_quantity = serializers.DecimalField(
-        required=False,
-        max_digits=8,
-        decimal_places=2,
-        min_value=Decimal("0.01"),
-    )
-
-    def validate(self, attrs):
-        if attrs.get("intake_weight_grams") is None and attrs.get("unit") is None:
-            raise serializers.ValidationError(
-                {"intake_weight_grams": "Provide intake_weight_grams, or use unit + unit_quantity."}
-            )
-        if attrs.get("unit") and attrs.get("unit_quantity") is None:
-            raise serializers.ValidationError({"unit_quantity": "unit_quantity is required with unit."})
-        return attrs
-
-
-class MealLogBulkCreateItemSerializer(serializers.Serializer):
-    intake_date = serializers.DateField()
-    meal_type = serializers.ChoiceField(choices=[choice for choice, _ in MealLog.MealType.choices])
-    food_item = serializers.PrimaryKeyRelatedField(queryset=FoodItem.objects.all())
-    intake_weight_grams = serializers.DecimalField(
-        required=False,
-        max_digits=7,
-        decimal_places=2,
-        min_value=Decimal("0.01"),
-    )
-    unit = serializers.ChoiceField(required=False, choices=sorted(MealLogSerializer.UNIT_TO_GRAMS.keys()))
-    unit_quantity = serializers.DecimalField(
-        required=False,
-        max_digits=8,
-        decimal_places=2,
-        min_value=Decimal("0.01"),
-    )
-
-    def validate(self, attrs):
-        if attrs.get("intake_weight_grams") is None and attrs.get("unit") is None:
-            raise serializers.ValidationError(
-                {"intake_weight_grams": "Provide intake_weight_grams, or use unit + unit_quantity."}
-            )
-        if attrs.get("unit") and attrs.get("unit_quantity") is None:
-            raise serializers.ValidationError({"unit_quantity": "unit_quantity is required with unit."})
-        return attrs
-
-
-class MealLogBulkCreateSerializer(serializers.Serializer):
-    items = MealLogBulkCreateItemSerializer(many=True, min_length=1, max_length=100)
-
-
-class MealLogBulkCreateResponseSerializer(serializers.Serializer):
-    created = serializers.IntegerField()
-    results = MealLogSerializer(many=True)
 
 
 class DailySummaryQuerySerializer(serializers.Serializer):

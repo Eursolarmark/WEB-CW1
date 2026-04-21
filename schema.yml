@@ -389,55 +389,6 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/foods/recent/:
-    get:
-      operationId: foods_recent_list
-      description: Return user's recently consumed foods.
-      tags:
-      - foods
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RecentFood'
-          description: ''
-  /api/foods/search/:
-    get:
-      operationId: foods_search_retrieve
-      description: Fuzzy food search by approximate name.
-      parameters:
-      - in: query
-        name: limit
-        schema:
-          type: integer
-          maximum: 50
-          minimum: 1
-          default: 10
-      - in: query
-        name: q
-        schema:
-          type: string
-          maxLength: 255
-          minLength: 1
-        required: true
-      tags:
-      - foods
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FoodFuzzySearchResponse'
-          description: ''
   /api/logs/:
     get:
       operationId: logs_list
@@ -621,7 +572,7 @@ paths:
       operationId: logs_retrieve
       description: |-
         /api/logs/{id}/
-        - PUT/PATCH: Update meal log
+        - PUT: Update meal log
         - DELETE: Remove meal log
       parameters:
       - in: path
@@ -645,7 +596,7 @@ paths:
       operationId: logs_update
       description: |-
         /api/logs/{id}/
-        - PUT/PATCH: Update meal log
+        - PUT: Update meal log
         - DELETE: Remove meal log
       parameters:
       - in: path
@@ -667,41 +618,6 @@ paths:
             schema:
               $ref: '#/components/schemas/MealLog'
         required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MealLog'
-          description: ''
-    patch:
-      operationId: logs_partial_update
-      description: |-
-        /api/logs/{id}/
-        - PUT/PATCH: Update meal log
-        - DELETE: Remove meal log
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - logs
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedMealLog'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedMealLog'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedMealLog'
       security:
       - jwtAuth: []
       - cookieAuth: []
@@ -716,7 +632,7 @@ paths:
       operationId: logs_destroy
       description: |-
         /api/logs/{id}/
-        - PUT/PATCH: Update meal log
+        - PUT: Update meal log
         - DELETE: Remove meal log
       parameters:
       - in: path
@@ -732,34 +648,6 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/logs/bulk/:
-    post:
-      operationId: logs_bulk_create
-      description: Create multiple meal logs in one request.
-      tags:
-      - logs
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MealLogBulkCreate'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/MealLogBulkCreate'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/MealLogBulkCreate'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MealLogBulkCreateResponse'
-          description: ''
   /api/logs/daily-summary/:
     get:
       operationId: logs_daily_summary_retrieve
@@ -784,76 +672,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DailySummaryResponse'
-          description: ''
-  /api/logs/quick/:
-    post:
-      operationId: logs_quick_create
-      description: Quick-create a meal log by food name.
-      tags:
-      - logs
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/QuickMealLog'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/QuickMealLog'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/QuickMealLog'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MealLog'
-          description: ''
-  /api/profile/targets/:
-    get:
-      operationId: profile_targets_retrieve
-      description: Get or update user nutrition targets.
-      tags:
-      - profile
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserNutritionTarget'
-          description: ''
-    put:
-      operationId: profile_targets_update
-      description: Get or update user nutrition targets.
-      tags:
-      - profile
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserNutritionTarget'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/UserNutritionTarget'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/UserNutritionTarget'
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserNutritionTarget'
           description: ''
 components:
   schemas:
@@ -1091,19 +909,6 @@ components:
           type: integer
       required:
       - food_item
-    FoodFuzzySearchResponse:
-      type: object
-      description: Response serializer for fuzzy food search endpoint.
-      properties:
-        message:
-          type: string
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/FoodItem'
-      required:
-      - message
-      - results
     FoodItem:
       type: object
       description: Read-only serializer for food catalog lookup.
@@ -1180,7 +985,7 @@ components:
           type: string
           format: date
         meal_type:
-          $ref: '#/components/schemas/MealLogMealTypeEnum'
+          $ref: '#/components/schemas/MealTypeEnum'
         food_item:
           type: integer
         food_item_name:
@@ -1190,15 +995,6 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
-        unit:
-          allOf:
-          - $ref: '#/components/schemas/UnitEnum'
-          writeOnly: true
-        unit_quantity:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          writeOnly: true
         actual_kcal:
           type: string
           format: decimal
@@ -1240,75 +1036,6 @@ components:
       - meal_type
       - updated_at
       - user
-    MealLogBulkCreate:
-      type: object
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/MealLogBulkCreateItem'
-      required:
-      - items
-    MealLogBulkCreateItem:
-      type: object
-      properties:
-        intake_date:
-          type: string
-          format: date
-        meal_type:
-          $ref: '#/components/schemas/MealType6d6Enum'
-        food_item:
-          type: integer
-        intake_weight_grams:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
-        unit:
-          $ref: '#/components/schemas/UnitEnum'
-        unit_quantity:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-      required:
-      - food_item
-      - intake_date
-      - meal_type
-    MealLogBulkCreateResponse:
-      type: object
-      properties:
-        created:
-          type: integer
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/MealLog'
-      required:
-      - created
-      - results
-    MealLogMealTypeEnum:
-      enum:
-      - breakfast
-      - lunch
-      - dinner
-      - snack
-      type: string
-      description: |-
-        * `breakfast` - Breakfast
-        * `lunch` - Lunch
-        * `dinner` - Dinner
-        * `snack` - Snack
-    MealType6d6Enum:
-      enum:
-      - breakfast
-      - lunch
-      - dinner
-      - snack
-      type: string
-      description: |-
-        * `breakfast` - breakfast
-        * `lunch` - lunch
-        * `dinner` - dinner
-        * `snack` - snack
     MealTypeBreakdown:
       type: object
       properties:
@@ -1344,6 +1071,18 @@ components:
       - total_fat
       - total_kcal
       - total_protein
+    MealTypeEnum:
+      enum:
+      - breakfast
+      - lunch
+      - dinner
+      - snack
+      type: string
+      description: |-
+        * `breakfast` - Breakfast
+        * `lunch` - Lunch
+        * `dinner` - Dinner
+        * `snack` - Snack
     MonthlyTrend:
       type: object
       properties:
@@ -1425,109 +1164,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MealLog'
-    PatchedMealLog:
-      type: object
-      description: Serializer for creating/updating and reading meal logs.
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        user:
-          type: integer
-          readOnly: true
-        intake_date:
-          type: string
-          format: date
-        meal_type:
-          $ref: '#/components/schemas/MealLogMealTypeEnum'
-        food_item:
-          type: integer
-        food_item_name:
-          type: string
-          readOnly: true
-        intake_weight_grams:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
-        unit:
-          allOf:
-          - $ref: '#/components/schemas/UnitEnum'
-          writeOnly: true
-        unit_quantity:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          writeOnly: true
-        actual_kcal:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          readOnly: true
-        actual_protein:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          readOnly: true
-        actual_carbs:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          readOnly: true
-        actual_fat:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-    QuickMealLog:
-      type: object
-      properties:
-        food_name:
-          type: string
-          maxLength: 255
-        intake_date:
-          type: string
-          format: date
-        meal_type:
-          $ref: '#/components/schemas/MealType6d6Enum'
-        intake_weight_grams:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,5}(?:\.\d{0,2})?$
-        unit:
-          $ref: '#/components/schemas/UnitEnum'
-        unit_quantity:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-      required:
-      - food_name
-      - intake_date
-      - meal_type
-    RecentFood:
-      type: object
-      properties:
-        food_item:
-          type: integer
-        food_item_name:
-          type: string
-        last_used_at:
-          type: string
-          format: date-time
-        use_count:
-          type: integer
-      required:
-      - food_item
-      - food_item_name
-      - last_used_at
-      - use_count
     Register:
       type: object
       description: Serializer for account creation.
@@ -1728,47 +1364,6 @@ components:
       - insights
       - period
       - target_kcal_per_day
-    UnitEnum:
-      enum:
-      - cup
-      - g
-      - gram
-      - grams
-      - piece
-      - tbsp
-      type: string
-      description: |-
-        * `cup` - cup
-        * `g` - g
-        * `gram` - gram
-        * `grams` - grams
-        * `piece` - piece
-        * `tbsp` - tbsp
-    UserNutritionTarget:
-      type: object
-      properties:
-        target_kcal:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-        target_protein:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-        target_carbs:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-        target_fat:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - updated_at
     WeeklyTrend:
       type: object
       properties:

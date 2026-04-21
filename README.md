@@ -12,14 +12,9 @@ PDF version: [API_Documentation.pdf](./API_Documentation.pdf)
 - Minimal auth endpoints: register, token, token refresh, me
 - Rich meal logging workflow:
   - standard create/list/update/delete
-  - quick log by food name
-  - bulk create in one request
-  - unit conversion input (`unit` + `unit_quantity`)
 - Better daily UX:
-  - fuzzy food search by approximate name
-  - recent foods
+  - food list filtering by name (`q`)
   - favorite foods
-  - personal nutrition targets
 - Advanced API quality features:
   - endpoint-level throttling (auth/food/write/analytics)
   - response caching (`X-Cache: HIT|MISS`)
@@ -99,9 +94,8 @@ python manage.py import_food_items --usda-dir "C:\path\to\dataset_folder" --trun
 ## API Modules
 
 - Auth: `/api/auth/...`
-- Food catalog + fuzzy search + favorites + recent: `/api/foods/...`
+- Food catalog + favorites: `/api/foods/...`
 - Meal logs + summary: `/api/logs/...`
-- Profile targets: `/api/profile/targets/`
 - Analytics: `/api/analytics/...`
 
 See complete payload examples and endpoint behavior in [API_Documentation.md](./API_Documentation.md).
@@ -118,9 +112,9 @@ Test coverage focus areas:
 
 - auth and session lifecycle
 - food filters and validation
-- meal log CRUD + quick/bulk workflows
+- meal log CRUD workflows
 - cache and rate-limit behavior
-- user experience endpoints (favorites/targets)
+- user experience endpoints (favorites)
 
 ## Common Local Issue
 

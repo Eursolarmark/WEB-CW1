@@ -1,11 +1,8 @@
 from datetime import timedelta
-from difflib import SequenceMatcher
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db import transaction
-from django.db.models import Count, Max
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import generics, status
@@ -21,7 +18,7 @@ from nutrition.cache_utils import (
     build_food_list_cache_key,
     bump_analytics_cache_version,
 )
-from nutrition.models import FoodFavorite, FoodItem, MealLog, UserNutritionTarget
+from nutrition.models import FoodFavorite, FoodItem, MealLog
 from nutrition.pagination import StandardResultsSetPagination
 from nutrition.serializers import (
     AdvancedAnalyticsQuerySerializer,
@@ -32,18 +29,11 @@ from nutrition.serializers import (
     DailySummaryQuerySerializer,
     FoodFavoriteCreateSerializer,
     FoodFavoriteSerializer,
-    FoodFuzzySearchQuerySerializer,
-    FoodFuzzySearchResponseSerializer,
     FoodItemListQuerySerializer,
     FoodItemSerializer,
-    MealLogBulkCreateSerializer,
-    MealLogBulkCreateResponseSerializer,
     MealLogListQuerySerializer,
     MealLogSerializer,
-    RecentFoodSerializer,
-    QuickMealLogSerializer,
     RegisterSerializer,
-    UserNutritionTargetSerializer,
     TrendsResponseSerializer,
     TrendsQuerySerializer,
 )
@@ -68,31 +58,8 @@ def _query_params_to_cache_dict(query_params) -> dict:
     return normalized
 
 
-def _default_target_kcal_for_user(user) -> Decimal:
-    target = getattr(user, "nutrition_target", None)
-    return target.target_kcal if target else Decimal("2000")
-
-
-def _food_name_similarity_score(query: str, candidate_name: str) -> float:
-    q = query.strip().lower()
-    name = candidate_name.strip().lower()
-    if not q or not name:
-        return 0.0
-
-    base = SequenceMatcher(None, q, name).ratio()
-    bonus = 0.0
-    if name.startswith(q):
-        bonus += 0.30
-    if q in name:
-        bonus += 0.20
-    query_tokens = [token for token in q.split() if token]
-    name_tokens = [token for token in name.replace(",", " ").split() if token]
-    if query_tokens and any(token in name for token in query_tokens):
-        bonus += 0.10
-    if query_tokens and name_tokens:
-        token_overlap = len(set(query_tokens) & set(name_tokens)) / max(len(set(query_tokens)), 1)
-        bonus += 0.20 * token_overlap
-    return base + bonus
+def _default_target_kcal() -> Decimal:
+    return Decimal("2000")
 
 
 def _idempotency_cache_key(request) -> str | None:
@@ -158,52 +125,6 @@ class CurrentUserAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class UserNutritionTargetAPIView(APIView):
-    """Get or update user nutrition targets."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(responses={200: UserNutritionTargetSerializer})
-    def get(self, request, *args, **kwargs):
-        target, _ = UserNutritionTarget.objects.get_or_create(user=request.user)
-        serializer = UserNutritionTargetSerializer(target)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @extend_schema(request=UserNutritionTargetSerializer, responses={200: UserNutritionTargetSerializer})
-    def put(self, request, *args, **kwargs):
-        target, _ = UserNutritionTarget.objects.get_or_create(user=request.user)
-        serializer = UserNutritionTargetSerializer(target, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class FoodRecentAPIView(APIView):
-    """Return user's recently consumed foods."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(responses={200: RecentFoodSerializer(many=True)})
-    def get(self, request, *args, **kwargs):
-        limit = min(max(int(request.query_params.get("limit", 20)), 1), 100)
-        recent_rows = (
-            MealLog.objects.filter(user=request.user, food_item__isnull=False)
-            .values("food_item_id", "food_item__name")
-            .annotate(last_used_at=Max("created_at"), use_count=Count("id"))
-            .order_by("-last_used_at")[:limit]
-        )
-        payload = [
-            {
-                "food_item": row["food_item_id"],
-                "food_item_name": row["food_item__name"],
-                "last_used_at": row["last_used_at"],
-                "use_count": row["use_count"],
-            }
-            for row in recent_rows
-        ]
-        return Response(payload, status=status.HTTP_200_OK)
-
-
 class FoodFavoriteListCreateAPIView(APIView):
     """List and create user favorites."""
 
@@ -242,93 +163,6 @@ class FoodFavoriteDeleteAPIView(APIView):
         if deleted == 0:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class MealLogQuickCreateAPIView(APIView):
-    """Quick-create a meal log by food name."""
-
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [BurstUserRateThrottle, MealWriteRateThrottle]
-
-    @extend_schema(request=QuickMealLogSerializer, responses={201: MealLogSerializer})
-    def post(self, request, *args, **kwargs):
-        replay_response = _get_idempotency_response(request)
-        if replay_response is not None:
-            return replay_response
-
-        serializer = QuickMealLogSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        validated = serializer.validated_data
-        name_query = validated["food_name"].strip()
-
-        food = FoodItem.objects.filter(name__iexact=name_query).first()
-        if not food:
-            matches = list(
-                FoodItem.objects.filter(name__icontains=name_query).values_list("name", flat=True)[:5]
-            )
-            return Response(
-                {
-                    "food_name": ["No exact food match found."],
-                    "candidates": matches,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        payload = {
-            "intake_date": validated["intake_date"],
-            "meal_type": validated["meal_type"],
-            "food_item": food.id,
-            "intake_weight_grams": validated.get("intake_weight_grams"),
-            "unit": validated.get("unit"),
-            "unit_quantity": validated.get("unit_quantity"),
-        }
-        payload = {key: value for key, value in payload.items() if value is not None}
-        log_serializer = MealLogSerializer(data=payload)
-        log_serializer.is_valid(raise_exception=True)
-        meal_log = log_serializer.save(user=request.user)
-        bump_analytics_cache_version(request.user.id)
-        response = Response(MealLogSerializer(meal_log).data, status=status.HTTP_201_CREATED)
-        _store_idempotency_response(request, response)
-        return response
-
-
-class MealLogBulkCreateAPIView(APIView):
-    """Create multiple meal logs in one request."""
-
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [BurstUserRateThrottle, MealWriteRateThrottle]
-
-    @extend_schema(request=MealLogBulkCreateSerializer, responses={201: MealLogBulkCreateResponseSerializer})
-    def post(self, request, *args, **kwargs):
-        replay_response = _get_idempotency_response(request)
-        if replay_response is not None:
-            return replay_response
-
-        serializer = MealLogBulkCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        items = serializer.validated_data["items"]
-
-        created_logs = []
-        with transaction.atomic():
-            for item in items:
-                payload = {
-                    "intake_date": item["intake_date"],
-                    "meal_type": item["meal_type"],
-                    "food_item": item["food_item"].id,
-                    "intake_weight_grams": item.get("intake_weight_grams"),
-                    "unit": item.get("unit"),
-                    "unit_quantity": item.get("unit_quantity"),
-                }
-                payload = {key: value for key, value in payload.items() if value is not None}
-                meal_serializer = MealLogSerializer(data=payload)
-                meal_serializer.is_valid(raise_exception=True)
-                created_logs.append(meal_serializer.save(user=request.user))
-
-        bump_analytics_cache_version(request.user.id)
-        output = MealLogSerializer(created_logs, many=True).data
-        response = Response({"created": len(output), "results": output}, status=status.HTTP_201_CREATED)
-        _store_idempotency_response(request, response)
-        return response
 
 
 @extend_schema_view(
@@ -468,98 +302,20 @@ class FoodItemListAPIView(generics.ListAPIView):
         return response
 
 
-class FoodItemFuzzySearchAPIView(APIView):
-    """Fuzzy food search by approximate name."""
-
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [BurstUserRateThrottle, FoodLookupRateThrottle]
-
-    @extend_schema(
-        parameters=[FoodFuzzySearchQuerySerializer],
-        responses={200: FoodFuzzySearchResponseSerializer},
-    )
-    def get(self, request, *args, **kwargs):
-        query_serializer = FoodFuzzySearchQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
-        params = query_serializer.validated_data
-
-        query = params["q"].strip()
-        limit = params["limit"]
-        tokens = [token for token in query.split() if token]
-
-        search_params = {"mode": "fuzzy_search", "q": query, "limit": limit}
-        cache_key = build_food_list_cache_key(user_id=request.user.id, params=search_params)
-        cached_payload = cache.get(cache_key)
-        if cached_payload is not None:
-            response = Response(cached_payload, status=status.HTTP_200_OK)
-            response["X-Cache"] = "HIT"
-            return response
-
-        base_qs = FoodItem.objects.all()
-        prefix_qs = base_qs.filter(name__istartswith=query)
-        contains_qs = base_qs.filter(name__icontains=query)
-        token_qs = base_qs.none()
-        for token in tokens:
-            token_qs = token_qs | base_qs.filter(name__icontains=token)
-
-        candidate_qs = (prefix_qs | contains_qs | token_qs).distinct()
-        candidates = list(candidate_qs[:500])
-
-        scored = [
-            (item, _food_name_similarity_score(query, item.name))
-            for item in candidates
-        ]
-
-        # For typo-heavy input (e.g. "chikn brest"), fall back to a global fuzzy
-        # pass, but only keep items above threshold to avoid unrelated results.
-        if not scored:
-            global_candidates = list(base_qs[:2000])
-            global_scored = [
-                (item, _food_name_similarity_score(query, item.name))
-                for item in global_candidates
-            ]
-            scored = [pair for pair in global_scored if pair[1] >= 0.45]
-
-        if not scored:
-            payload = {"message": "No close matches found.", "results": []}
-            cache.set(cache_key, payload, timeout=FOOD_LIST_CACHE_TIMEOUT_SECONDS)
-            response = Response(payload, status=status.HTTP_200_OK)
-            response["X-Cache"] = "MISS"
-            return response
-
-        ranked = sorted(
-            scored,
-            key=lambda pair: (
-                -pair[1],
-                len(pair[0].name),
-                pair[0].name.lower(),
-            ),
-        )
-
-        top_results = [item for item, _score in ranked[:limit]]
-        payload = {
-            "message": f"Found {len(top_results)} close matches.",
-            "results": FoodItemSerializer(top_results, many=True).data,
-        }
-        cache.set(cache_key, payload, timeout=FOOD_LIST_CACHE_TIMEOUT_SECONDS)
-        response = Response(payload, status=status.HTTP_200_OK)
-        response["X-Cache"] = "MISS"
-        return response
-
-
 class MealLogDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     /api/logs/{id}/
-    - PUT/PATCH: Update meal log
+    - PUT: Update meal log
     - DELETE: Remove meal log
     """
 
     serializer_class = MealLogSerializer
     queryset = MealLog.objects.select_related("food_item").all()
     permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "put", "delete", "head", "options"]
 
     def get_throttles(self):
-        if self.request.method.upper() in {"PUT", "PATCH", "DELETE"}:
+        if self.request.method.upper() in {"PUT", "DELETE"}:
             return [BurstUserRateThrottle(), MealWriteRateThrottle()]
         return super().get_throttles()
 
@@ -635,7 +391,7 @@ class NutritionTrendsAPIView(APIView):
 
         end_date = query_serializer.validated_data.get("end_date", timezone.localdate())
         days = query_serializer.validated_data["days"]
-        target_kcal = query_serializer.validated_data.get("target_kcal", _default_target_kcal_for_user(request.user))
+        target_kcal = query_serializer.validated_data.get("target_kcal", _default_target_kcal())
         cache_key = build_analytics_cache_key(
             endpoint="trends",
             user_id=request.user.id,
@@ -687,7 +443,7 @@ class AdvancedAnalyticsAPIView(APIView):
 
         end_date = query_serializer.validated_data.get("end_date", timezone.localdate())
         start_date = query_serializer.validated_data.get("start_date", end_date - timedelta(days=29))
-        target_kcal = query_serializer.validated_data.get("target_kcal", _default_target_kcal_for_user(request.user))
+        target_kcal = query_serializer.validated_data.get("target_kcal", _default_target_kcal())
         adherence_tolerance_pct = query_serializer.validated_data["adherence_tolerance_pct"]
         cache_key = build_analytics_cache_key(
             endpoint="advanced",

@@ -50,6 +50,20 @@ class MealLogAPITests(APITestCase):
         log = MealLog.objects.get(pk=response.data["id"])
         self.assertEqual(log.user_id, self.user.id)
 
+    def test_create_meallog_requires_intake_weight_grams(self):
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "intake_date": "2026-04-13",
+            "meal_type": "lunch",
+            "food_item": self.food.id,
+        }
+        response = self.client.post(reverse("meal-log-list-create"), payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["code"], "validation_error")
+        self.assertIn("intake_weight_grams", response.data["details"])
+
     def test_list_returns_only_current_user_data(self):
         MealLog.objects.create(
             user=self.user,
@@ -110,7 +124,32 @@ class MealLogAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_patch_recomputes_nutrients(self):
+    def test_put_recomputes_nutrients(self):
+        log = MealLog.objects.create(
+            user=self.user,
+            intake_date=date(2026, 4, 13),
+            meal_type="snack",
+            food_item=self.food,
+            intake_weight_grams=Decimal("100.00"),
+        )
+        self.client.force_authenticate(self.user)
+
+        response = self.client.put(
+            reverse("meal-log-detail", kwargs={"pk": log.pk}),
+            {
+                "intake_date": "2026-04-13",
+                "meal_type": "snack",
+                "food_item": self.food.id,
+                "intake_weight_grams": "200.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(as_decimal(response.data["actual_kcal"]), Decimal("118.00"))
+        self.assertEqual(as_decimal(response.data["actual_protein"]), Decimal("20.00"))
+
+    def test_patch_is_not_allowed(self):
         log = MealLog.objects.create(
             user=self.user,
             intake_date=date(2026, 4, 13),
@@ -126,9 +165,7 @@ class MealLogAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(as_decimal(response.data["actual_kcal"]), Decimal("118.00"))
-        self.assertEqual(as_decimal(response.data["actual_protein"]), Decimal("20.00"))
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def test_delete_meallog(self):
         log = MealLog.objects.create(
