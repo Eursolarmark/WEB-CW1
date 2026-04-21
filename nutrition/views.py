@@ -1,16 +1,12 @@
 from datetime import timedelta
+from difflib import SequenceMatcher
 from decimal import Decimal
 
-from django.conf import settings
-from django.contrib.auth import get_user_model, update_session_auth_hash
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, Max
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -25,37 +21,28 @@ from nutrition.cache_utils import (
     build_food_list_cache_key,
     bump_analytics_cache_version,
 )
-from nutrition.models import CustomFoodItem, FoodFavorite, FoodItem, MealLog, Recipe, UserNutritionTarget
+from nutrition.models import FoodFavorite, FoodItem, MealLog, UserNutritionTarget
 from nutrition.pagination import StandardResultsSetPagination
 from nutrition.serializers import (
     AdvancedAnalyticsQuerySerializer,
     AdvancedAnalyticsResponseSerializer,
-    ChangePasswordSerializer,
-    CustomFoodItemSerializer,
     CustomTokenObtainPairSerializer,
-    CurrentSessionsResponseSerializer,
     CurrentUserSerializer,
     DailySummaryResponseSerializer,
     DailySummaryQuerySerializer,
-    DeleteAccountSerializer,
     FoodFavoriteCreateSerializer,
     FoodFavoriteSerializer,
+    FoodFuzzySearchQuerySerializer,
+    FoodFuzzySearchResponseSerializer,
     FoodItemListQuerySerializer,
     FoodItemSerializer,
-    LogoutSerializer,
     MealLogBulkCreateSerializer,
     MealLogBulkCreateResponseSerializer,
     MealLogListQuerySerializer,
-    MealLogBulkCreateItemSerializer,
     MealLogSerializer,
     RecentFoodSerializer,
-    PasswordResetConfirmSerializer,
-    PasswordResetRequestSerializer,
     QuickMealLogSerializer,
-    RevokeAllSessionsResponseSerializer,
     RegisterSerializer,
-    RecipeSerializer,
-    UserDataExportResponseSerializer,
     UserNutritionTargetSerializer,
     TrendsResponseSerializer,
     TrendsQuerySerializer,
@@ -84,6 +71,28 @@ def _query_params_to_cache_dict(query_params) -> dict:
 def _default_target_kcal_for_user(user) -> Decimal:
     target = getattr(user, "nutrition_target", None)
     return target.target_kcal if target else Decimal("2000")
+
+
+def _food_name_similarity_score(query: str, candidate_name: str) -> float:
+    q = query.strip().lower()
+    name = candidate_name.strip().lower()
+    if not q or not name:
+        return 0.0
+
+    base = SequenceMatcher(None, q, name).ratio()
+    bonus = 0.0
+    if name.startswith(q):
+        bonus += 0.30
+    if q in name:
+        bonus += 0.20
+    query_tokens = [token for token in q.split() if token]
+    name_tokens = [token for token in name.replace(",", " ").split() if token]
+    if query_tokens and any(token in name for token in query_tokens):
+        bonus += 0.10
+    if query_tokens and name_tokens:
+        token_overlap = len(set(query_tokens) & set(name_tokens)) / max(len(set(query_tokens)), 1)
+        bonus += 0.20 * token_overlap
+    return base + bonus
 
 
 def _idempotency_cache_key(request) -> str | None:
@@ -147,174 +156,6 @@ class CurrentUserAPIView(APIView):
     def get(self, request, *args, **kwargs):
         serializer = CurrentUserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class LogoutAPIView(APIView):
-    """Blacklist refresh token to terminate session."""
-
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [AuthRateThrottle]
-
-    @extend_schema(request=LogoutSerializer, responses={205: None})
-    def post(self, request, *args, **kwargs):
-        serializer = LogoutSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return Response(status=status.HTTP_205_RESET_CONTENT)
-
-
-class ChangePasswordAPIView(APIView):
-    """Allow authenticated users to change password."""
-
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [AuthRateThrottle]
-
-    @extend_schema(request=ChangePasswordSerializer, responses={200: None})
-    def post(self, request, *args, **kwargs):
-        serializer = ChangePasswordSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        if not request.user.check_password(serializer.validated_data["old_password"]):
-            return Response(
-                {"old_password": ["Old password is incorrect."]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        request.user.set_password(serializer.validated_data["new_password"])
-        request.user.save(update_fields=["password"])
-        update_session_auth_hash(request, request.user)
-        return Response(status=status.HTTP_200_OK)
-
-
-class PasswordResetRequestAPIView(APIView):
-    """Issue password reset token payload (development/coursework-friendly)."""
-
-    permission_classes = [AllowAny]
-    throttle_classes = [AuthRateThrottle]
-
-    @extend_schema(request=PasswordResetRequestSerializer, responses={200: None})
-    def post(self, request, *args, **kwargs):
-        serializer = PasswordResetRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        email = serializer.validated_data["email"]
-        user = User.objects.filter(email__iexact=email).first()
-        response = {"message": "If the email exists, reset instructions are prepared."}
-        if user and settings.DEBUG:
-            token_generator = PasswordResetTokenGenerator()
-            response["uid"] = urlsafe_base64_encode(force_bytes(user.pk))
-            response["token"] = token_generator.make_token(user)
-        return Response(response, status=status.HTTP_200_OK)
-
-
-class PasswordResetConfirmAPIView(APIView):
-    """Confirm password reset using uid/token pair."""
-
-    permission_classes = [AllowAny]
-    throttle_classes = [AuthRateThrottle]
-
-    @extend_schema(request=PasswordResetConfirmSerializer, responses={200: None})
-    def post(self, request, *args, **kwargs):
-        serializer = PasswordResetConfirmSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        uid = serializer.validated_data["uid"]
-        token = serializer.validated_data["token"]
-        try:
-            user_id = force_str(urlsafe_base64_decode(uid))
-            user = User.objects.get(pk=user_id)
-        except Exception:
-            return Response({"uid": ["Invalid uid."]}, status=status.HTTP_400_BAD_REQUEST)
-
-        token_generator = PasswordResetTokenGenerator()
-        if not token_generator.check_token(user, token):
-            return Response({"token": ["Invalid or expired token."]}, status=status.HTTP_400_BAD_REQUEST)
-
-        user.set_password(serializer.validated_data["new_password"])
-        user.save(update_fields=["password"])
-        return Response(status=status.HTTP_200_OK)
-
-
-class CurrentSessionsAPIView(APIView):
-    """List active refresh-token sessions for current user."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(responses={200: CurrentSessionsResponseSerializer})
-    def get(self, request, *args, **kwargs):
-        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-
-        blacklisted_ids = set(
-            BlacklistedToken.objects.filter(token__user=request.user).values_list("token_id", flat=True)
-        )
-        sessions = []
-        for token in OutstandingToken.objects.filter(user=request.user).order_by("-created_at"):
-            if token.id in blacklisted_ids:
-                continue
-            sessions.append(
-                {
-                    "jti": token.jti,
-                    "created_at": token.created_at,
-                    "expires_at": token.expires_at,
-                }
-            )
-        return Response({"sessions": sessions}, status=status.HTTP_200_OK)
-
-
-class RevokeAllSessionsAPIView(APIView):
-    """Blacklist all active refresh tokens for current user."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(request=None, responses={200: RevokeAllSessionsResponseSerializer})
-    def post(self, request, *args, **kwargs):
-        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-
-        outstanding_tokens = OutstandingToken.objects.filter(user=request.user)
-        revoked = 0
-        for token in outstanding_tokens:
-            _, created = BlacklistedToken.objects.get_or_create(token=token)
-            if created:
-                revoked += 1
-        return Response({"revoked_sessions": revoked}, status=status.HTTP_200_OK)
-
-
-class DeleteAccountAPIView(APIView):
-    """Delete authenticated user account."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(request=DeleteAccountSerializer, responses={204: None})
-    def delete(self, request, *args, **kwargs):
-        serializer = DeleteAccountSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        if not request.user.check_password(serializer.validated_data["password"]):
-            return Response({"password": ["Password is incorrect."]}, status=status.HTTP_400_BAD_REQUEST)
-        request.user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class UserDataExportAPIView(APIView):
-    """Export current user's key account and tracking data."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(responses={200: UserDataExportResponseSerializer})
-    def get(self, request, *args, **kwargs):
-        logs = MealLog.objects.filter(user=request.user).select_related("food_item", "custom_food")
-        export_payload = {
-            "user": CurrentUserSerializer(request.user).data,
-            "nutrition_target": UserNutritionTargetSerializer(
-                getattr(request.user, "nutrition_target", UserNutritionTarget(user=request.user))
-            ).data,
-            "favorites": FoodFavoriteSerializer(
-                FoodFavorite.objects.filter(user=request.user).select_related("food_item"),
-                many=True,
-            ).data,
-            "custom_food_items": CustomFoodItemSerializer(
-                CustomFoodItem.objects.filter(user=request.user),
-                many=True,
-            ).data,
-            "meal_logs": MealLogSerializer(logs, many=True).data,
-        }
-        return Response(export_payload, status=status.HTTP_200_OK)
 
 
 class UserNutritionTargetAPIView(APIView):
@@ -403,60 +244,6 @@ class FoodFavoriteDeleteAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class CustomFoodItemListCreateAPIView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = CustomFoodItemSerializer
-
-    def get_queryset(self):
-        return CustomFoodItem.objects.filter(user=self.request.user).order_by("name")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        replay_response = _get_idempotency_response(request)
-        if replay_response is not None:
-            return replay_response
-        response = super().create(request, *args, **kwargs)
-        _store_idempotency_response(request, response)
-        return response
-
-
-class CustomFoodItemDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = CustomFoodItemSerializer
-
-    def get_queryset(self):
-        return CustomFoodItem.objects.filter(user=self.request.user)
-
-
-class RecipeListCreateAPIView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = RecipeSerializer
-
-    def get_queryset(self):
-        return Recipe.objects.filter(user=self.request.user).prefetch_related("items__food_item", "items__custom_food")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        replay_response = _get_idempotency_response(request)
-        if replay_response is not None:
-            return replay_response
-        response = super().create(request, *args, **kwargs)
-        _store_idempotency_response(request, response)
-        return response
-
-
-class RecipeDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = RecipeSerializer
-
-    def get_queryset(self):
-        return Recipe.objects.filter(user=self.request.user).prefetch_related("items__food_item", "items__custom_food")
-
-
 class MealLogQuickCreateAPIView(APIView):
     """Quick-create a meal log by food name."""
 
@@ -475,24 +262,14 @@ class MealLogQuickCreateAPIView(APIView):
         name_query = validated["food_name"].strip()
 
         food = FoodItem.objects.filter(name__iexact=name_query).first()
-        custom_food = None
         if not food:
-            custom_food = CustomFoodItem.objects.filter(user=request.user, name__iexact=name_query).first()
-
-        if not food and not custom_food:
             matches = list(
                 FoodItem.objects.filter(name__icontains=name_query).values_list("name", flat=True)[:5]
             )
-            custom_matches = list(
-                CustomFoodItem.objects.filter(user=request.user, name__icontains=name_query).values_list(
-                    "name", flat=True
-                )[:5]
-            )
-            candidates = matches + [f"[Custom] {name}" for name in custom_matches]
             return Response(
                 {
                     "food_name": ["No exact food match found."],
-                    "candidates": candidates,
+                    "candidates": matches,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -500,8 +277,7 @@ class MealLogQuickCreateAPIView(APIView):
         payload = {
             "intake_date": validated["intake_date"],
             "meal_type": validated["meal_type"],
-            "food_item": food.id if food else None,
-            "custom_food": custom_food.id if custom_food else None,
+            "food_item": food.id,
             "intake_weight_grams": validated.get("intake_weight_grams"),
             "unit": validated.get("unit"),
             "unit_quantity": validated.get("unit_quantity"),
@@ -535,17 +311,10 @@ class MealLogBulkCreateAPIView(APIView):
         created_logs = []
         with transaction.atomic():
             for item in items:
-                custom_food = item.get("custom_food")
-                if custom_food and custom_food.user_id != request.user.id:
-                    return Response(
-                        {"custom_food": ["custom_food does not belong to current user."]},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
                 payload = {
                     "intake_date": item["intake_date"],
                     "meal_type": item["meal_type"],
-                    "food_item": item.get("food_item").id if item.get("food_item") else None,
-                    "custom_food": custom_food.id if custom_food else None,
+                    "food_item": item["food_item"].id,
                     "intake_weight_grams": item.get("intake_weight_grams"),
                     "unit": item.get("unit"),
                     "unit_quantity": item.get("unit_quantity"),
@@ -573,7 +342,7 @@ class MealLogListCreateAPIView(generics.ListCreateAPIView):
     """
 
     serializer_class = MealLogSerializer
-    queryset = MealLog.objects.select_related("food_item", "custom_food").all()
+    queryset = MealLog.objects.select_related("food_item").all()
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
@@ -699,6 +468,85 @@ class FoodItemListAPIView(generics.ListAPIView):
         return response
 
 
+class FoodItemFuzzySearchAPIView(APIView):
+    """Fuzzy food search by approximate name."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [BurstUserRateThrottle, FoodLookupRateThrottle]
+
+    @extend_schema(
+        parameters=[FoodFuzzySearchQuerySerializer],
+        responses={200: FoodFuzzySearchResponseSerializer},
+    )
+    def get(self, request, *args, **kwargs):
+        query_serializer = FoodFuzzySearchQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+
+        query = params["q"].strip()
+        limit = params["limit"]
+        tokens = [token for token in query.split() if token]
+
+        search_params = {"mode": "fuzzy_search", "q": query, "limit": limit}
+        cache_key = build_food_list_cache_key(user_id=request.user.id, params=search_params)
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            response = Response(cached_payload, status=status.HTTP_200_OK)
+            response["X-Cache"] = "HIT"
+            return response
+
+        base_qs = FoodItem.objects.all()
+        prefix_qs = base_qs.filter(name__istartswith=query)
+        contains_qs = base_qs.filter(name__icontains=query)
+        token_qs = base_qs.none()
+        for token in tokens:
+            token_qs = token_qs | base_qs.filter(name__icontains=token)
+
+        candidate_qs = (prefix_qs | contains_qs | token_qs).distinct()
+        candidates = list(candidate_qs[:500])
+
+        scored = [
+            (item, _food_name_similarity_score(query, item.name))
+            for item in candidates
+        ]
+
+        # For typo-heavy input (e.g. "chikn brest"), fall back to a global fuzzy
+        # pass, but only keep items above threshold to avoid unrelated results.
+        if not scored:
+            global_candidates = list(base_qs[:2000])
+            global_scored = [
+                (item, _food_name_similarity_score(query, item.name))
+                for item in global_candidates
+            ]
+            scored = [pair for pair in global_scored if pair[1] >= 0.45]
+
+        if not scored:
+            payload = {"message": "No close matches found.", "results": []}
+            cache.set(cache_key, payload, timeout=FOOD_LIST_CACHE_TIMEOUT_SECONDS)
+            response = Response(payload, status=status.HTTP_200_OK)
+            response["X-Cache"] = "MISS"
+            return response
+
+        ranked = sorted(
+            scored,
+            key=lambda pair: (
+                -pair[1],
+                len(pair[0].name),
+                pair[0].name.lower(),
+            ),
+        )
+
+        top_results = [item for item, _score in ranked[:limit]]
+        payload = {
+            "message": f"Found {len(top_results)} close matches.",
+            "results": FoodItemSerializer(top_results, many=True).data,
+        }
+        cache.set(cache_key, payload, timeout=FOOD_LIST_CACHE_TIMEOUT_SECONDS)
+        response = Response(payload, status=status.HTTP_200_OK)
+        response["X-Cache"] = "MISS"
+        return response
+
+
 class MealLogDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     /api/logs/{id}/
@@ -707,7 +555,7 @@ class MealLogDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
 
     serializer_class = MealLogSerializer
-    queryset = MealLog.objects.select_related("food_item", "custom_food").all()
+    queryset = MealLog.objects.select_related("food_item").all()
     permission_classes = [IsAuthenticated]
 
     def get_throttles(self):

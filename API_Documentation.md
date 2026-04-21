@@ -30,7 +30,7 @@ JWT policy:
 - `access` lifetime: 15 minutes
 - `refresh` lifetime: 7 days
 - refresh rotation: enabled
-- blacklist after rotation/logout: enabled
+- blacklist after rotation: enabled
 
 Global response headers:
 
@@ -51,8 +51,6 @@ Idempotency-Key: <client-generated-unique-key>
 Supported endpoints:
 
 - `POST /api/foods/favorites/`
-- `POST /api/custom-foods/`
-- `POST /api/recipes/`
 - `POST /api/logs/`
 - `POST /api/logs/quick/`
 - `POST /api/logs/bulk/`
@@ -68,6 +66,7 @@ Behavior:
 Cached endpoints:
 
 - `GET /api/foods/` (TTL 120s)
+- `GET /api/foods/search/` (TTL 120s)
 - `GET /api/logs/daily-summary/` (TTL 180s)
 - `GET /api/analytics/trends/` (TTL 180s)
 - `GET /api/analytics/advanced/` (TTL 180s)
@@ -105,11 +104,7 @@ Handled errors return this shape:
 
 ### 4.1 Food Source Rule
 
-For `MealLog` and `RecipeItem`, exactly one source must be provided:
-
-- `food_item` **or** `custom_food`
-
-Providing both or neither is invalid.
+`MealLog` only accepts `food_item` (official food catalog item).
 
 ### 4.2 Weight Input Rule
 
@@ -216,135 +211,6 @@ Success: `200 OK`
 }
 ```
 
-### POST `/api/auth/logout/`
-
-Blacklist refresh token.
-
-Request:
-
-```json
-{
-  "refresh": "<refresh_token>"
-}
-```
-
-Success: `205 Reset Content`
-
-### POST `/api/auth/password/change/`
-
-Request:
-
-```json
-{
-  "old_password": "StrongPass123!",
-  "new_password": "NewStrongPass123!",
-  "new_password_confirm": "NewStrongPass123!"
-}
-```
-
-Success: `200 OK`
-
-### POST `/api/auth/password/reset/request/`
-
-Request:
-
-```json
-{
-  "email": "alice@example.com"
-}
-```
-
-Success: `200 OK`
-
-```json
-{
-  "message": "If the email exists, reset instructions are prepared."
-}
-```
-
-In `DEBUG=true`, response also includes `uid` and `token` for coursework/development testing.
-
-### POST `/api/auth/password/reset/confirm/`
-
-Request:
-
-```json
-{
-  "uid": "<uid>",
-  "token": "<reset_token>",
-  "new_password": "AnotherStrongPass123!",
-  "new_password_confirm": "AnotherStrongPass123!"
-}
-```
-
-Success: `200 OK`
-
-### GET `/api/auth/sessions/`
-
-List active (non-blacklisted) refresh-token sessions.
-
-Success: `200 OK`
-
-```json
-{
-  "sessions": [
-    {
-      "jti": "<token-jti>",
-      "created_at": "2026-04-17T10:30:00Z",
-      "expires_at": "2026-04-24T10:30:00Z"
-    }
-  ]
-}
-```
-
-### POST `/api/auth/sessions/revoke-all/`
-
-Blacklist all outstanding refresh tokens for current user.
-
-Success: `200 OK`
-
-```json
-{
-  "revoked_sessions": 3
-}
-```
-
-### DELETE `/api/auth/account/`
-
-Delete current user account.
-
-Request:
-
-```json
-{
-  "password": "StrongPass123!"
-}
-```
-
-Success: `204 No Content`
-
-### GET `/api/auth/export/`
-
-Export key user data.
-
-Success: `200 OK`
-
-```json
-{
-  "user": {"id": 1, "username": "alice", "email": "alice@example.com"},
-  "nutrition_target": {
-    "target_kcal": "2000.00",
-    "target_protein": "120.00",
-    "target_carbs": "220.00",
-    "target_fat": "67.00",
-    "updated_at": "2026-04-17T11:00:00Z"
-  },
-  "favorites": [],
-  "custom_food_items": [],
-  "meal_logs": []
-}
-```
-
 ---
 
 ## 5.2 Food Catalog, Recent, Favorites
@@ -382,6 +248,45 @@ Success: `200 OK`
       "source": "USDA_2025"
     }
   ]
+}
+```
+
+### GET `/api/foods/search/`
+
+Fuzzy search by approximate food name.  
+Returns similar entries sorted by relevance (includes `id`, `name`, and nutrition fields).
+
+Query params:
+
+- `q` (required, min length 1)
+- `limit` (optional, default 10, range 1..50)
+
+Success: `200 OK`
+
+```json
+{
+  "message": "Found 1 close matches.",
+  "results": [
+    {
+      "id": 298,
+      "name": "Chicken Breast",
+      "diet_type": "high_protein",
+      "per_100g_kcal": "165.00",
+      "per_100g_protein": "31.00",
+      "per_100g_carbs": "0.00",
+      "per_100g_fat": "3.60",
+      "source": "USDA_2025"
+    }
+  ]
+}
+```
+
+No close match example (`200 OK`):
+
+```json
+{
+  "message": "No close matches found.",
+  "results": []
 }
 ```
 
@@ -446,116 +351,7 @@ Delete favorite by `food_item_id`.
 
 ---
 
-## 5.3 Custom Foods
-
-### GET `/api/custom-foods/`
-
-List current user custom foods.
-
-### POST `/api/custom-foods/`
-
-Create custom food.
-
-Request:
-
-```json
-{
-  "name": "My Oat Bowl",
-  "per_100g_kcal": "150.00",
-  "per_100g_protein": "6.00",
-  "per_100g_carbs": "24.00",
-  "per_100g_fat": "3.00"
-}
-```
-
-Success: `201 Created`
-
-### GET `/api/custom-foods/{id}/`
-
-Retrieve one custom food (owner only).
-
-### PUT/PATCH `/api/custom-foods/{id}/`
-
-Update custom food (owner only).
-
-### DELETE `/api/custom-foods/{id}/`
-
-Delete custom food (owner only).
-
----
-
-## 5.4 Recipes
-
-### GET `/api/recipes/`
-
-List current user recipe templates.
-
-### POST `/api/recipes/`
-
-Create recipe.
-
-Request:
-
-```json
-{
-  "name": "Breakfast Bowl",
-  "description": "Demo recipe",
-  "items": [
-    {"food_item": 298, "weight_grams": "100.00"},
-    {"custom_food": 5, "weight_grams": "150.00"}
-  ]
-}
-```
-
-Success: `201 Created`
-
-```json
-{
-  "id": 1,
-  "name": "Breakfast Bowl",
-  "description": "Demo recipe",
-  "items": [
-    {
-      "id": 1,
-      "food_item": 298,
-      "food_item_name": "Hummus, Commercial",
-      "custom_food": null,
-      "custom_food_name": null,
-      "weight_grams": "100.00"
-    },
-    {
-      "id": 2,
-      "food_item": null,
-      "food_item_name": null,
-      "custom_food": 5,
-      "custom_food_name": "Custom Yogurt",
-      "weight_grams": "150.00"
-    }
-  ],
-  "total_kcal": "239.00",
-  "total_protein": "25.00",
-  "total_carbs": "34.80",
-  "total_fat": "3.60",
-  "created_at": "2026-04-17T11:00:00Z",
-  "updated_at": "2026-04-17T11:00:00Z"
-}
-```
-
-### GET `/api/recipes/{id}/`
-
-Retrieve one recipe (owner only).
-
-### PUT/PATCH `/api/recipes/{id}/`
-
-Update recipe (owner only). If `items` is included, existing items are replaced.
-
-### DELETE `/api/recipes/{id}/`
-
-Delete recipe (owner only).
-
----
-
-## 5.5 Meal Logs
+## 5.3 Meal Logs
 
 ### GET `/api/logs/`
 
@@ -595,11 +391,9 @@ Request (unit mode):
 }
 ```
 
-`food_item` can be replaced with `custom_food`.
-
 ### POST `/api/logs/quick/`
 
-Quick create by `food_name` (matches exact name in `FoodItem`, then user `CustomFoodItem`).
+Quick create by `food_name` (exact match in `FoodItem`).
 
 Request:
 
@@ -633,9 +427,9 @@ Request:
     {
       "intake_date": "2026-04-17",
       "meal_type": "lunch",
-      "custom_food": 5,
-      "unit": "cup",
-      "unit_quantity": "0.50"
+      "food_item": 298,
+      "unit": "piece",
+      "unit_quantity": "2.00"
     }
   ]
 }
@@ -684,7 +478,7 @@ Success: `200 OK`
 
 ---
 
-## 5.6 Profile Targets
+## 5.4 Profile Targets
 
 ### GET `/api/profile/targets/`
 
@@ -719,7 +513,7 @@ Success: `200 OK`
 
 ---
 
-## 5.7 Analytics
+## 5.5 Analytics
 
 ### GET `/api/analytics/trends/`
 
@@ -838,7 +632,6 @@ Success: `200 OK` (shortened)
 - `200 OK`: successful read/update/operation
 - `201 Created`: resource created
 - `204 No Content`: successful delete
-- `205 Reset Content`: logout success
 - `400 Bad Request`: validation or request parameter issues
 - `401 Unauthorized`: missing/invalid auth credentials
 - `403 Forbidden`: permission denied

@@ -9,17 +9,16 @@ PDF version: [API_Documentation.pdf](./API_Documentation.pdf)
 
 - JWT authentication with refresh rotation and blacklist support
 - Login with username **or** email
-- Full account flow endpoints: register, me, logout, password change/reset, sessions, account delete, data export
+- Minimal auth endpoints: register, token, token refresh, me
 - Rich meal logging workflow:
   - standard create/list/update/delete
   - quick log by food name
   - bulk create in one request
   - unit conversion input (`unit` + `unit_quantity`)
 - Better daily UX:
+  - fuzzy food search by approximate name
   - recent foods
-  - favorites
-  - custom foods
-  - reusable recipes
+  - favorite foods
   - personal nutrition targets
 - Advanced API quality features:
   - endpoint-level throttling (auth/food/write/analytics)
@@ -100,9 +99,7 @@ python manage.py import_food_items --usda-dir "C:\path\to\dataset_folder" --trun
 ## API Modules
 
 - Auth: `/api/auth/...`
-- Food catalog + favorites + recent: `/api/foods/...`
-- Custom foods: `/api/custom-foods/...`
-- Recipes: `/api/recipes/...`
+- Food catalog + fuzzy search + favorites + recent: `/api/foods/...`
 - Meal logs + summary: `/api/logs/...`
 - Profile targets: `/api/profile/targets/`
 - Analytics: `/api/analytics/...`
@@ -123,7 +120,7 @@ Test coverage focus areas:
 - food filters and validation
 - meal log CRUD + quick/bulk workflows
 - cache and rate-limit behavior
-- user experience endpoints (favorites/custom foods/recipes/targets)
+- user experience endpoints (favorites/targets)
 
 ## Common Local Issue
 

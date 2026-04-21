@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from nutrition.models import CustomFoodItem, FoodFavorite, FoodItem, MealLog, UserNutritionTarget
+from nutrition.models import FoodFavorite, FoodItem, MealLog, UserNutritionTarget
 
 User = get_user_model()
 
@@ -107,36 +107,6 @@ class UserExperienceFeatureTests(APITestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(FoodFavorite.objects.filter(user=self.user, food_item=self.food).exists())
 
-    def test_custom_food_and_meallog(self):
-        custom_food_response = self.client.post(
-            reverse("custom-food-list-create"),
-            {
-                "name": "My Oat Bowl",
-                "per_100g_kcal": "150.00",
-                "per_100g_protein": "6.00",
-                "per_100g_carbs": "24.00",
-                "per_100g_fat": "3.00",
-            },
-            format="json",
-        )
-        self.assertEqual(custom_food_response.status_code, status.HTTP_201_CREATED)
-        custom_food_id = custom_food_response.data["id"]
-
-        log_response = self.client.post(
-            reverse("meal-log-list-create"),
-            {
-                "intake_date": "2026-04-17",
-                "meal_type": "breakfast",
-                "custom_food": custom_food_id,
-                "intake_weight_grams": "200.00",
-            },
-            format="json",
-        )
-        self.assertEqual(log_response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(log_response.data["custom_food"], custom_food_id)
-        self.assertEqual(log_response.data["custom_food_name"], "My Oat Bowl")
-        self.assertEqual(as_decimal(log_response.data["actual_kcal"]), Decimal("300.00"))
-
     def test_user_target_is_default_for_trends_when_target_not_provided(self):
         UserNutritionTarget.objects.create(
             user=self.user,
@@ -159,30 +129,4 @@ class UserExperienceFeatureTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(as_decimal(response.data["target_kcal_per_day"]), Decimal("1500.00"))
-
-    def test_recipe_create_and_total_values(self):
-        custom_food = CustomFoodItem.objects.create(
-            user=self.user,
-            name="Custom Yogurt",
-            per_100g_kcal=Decimal("100.00"),
-            per_100g_protein=Decimal("10.00"),
-            per_100g_carbs=Decimal("8.00"),
-            per_100g_fat=Decimal("2.00"),
-        )
-        response = self.client.post(
-            reverse("recipe-list-create"),
-            {
-                "name": "Breakfast Bowl",
-                "description": "Demo recipe",
-                "items": [
-                    {"food_item": self.food.id, "weight_grams": "100.00"},
-                    {"custom_food": custom_food.id, "weight_grams": "150.00"},
-                ],
-            },
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["name"], "Breakfast Bowl")
-        self.assertEqual(as_decimal(response.data["total_kcal"]), Decimal("239.00"))
 
